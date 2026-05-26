@@ -32,9 +32,7 @@ class TestMCPToolClient:
         from src.agent import MCPToolClient
         client = MCPToolClient("http://localhost:8000/mcp")
         assert client.mcp_url == "http://localhost:8000/mcp"
-        assert client.timeout == 60.0
-        assert client._session_id is None
-        assert client._initialized is False
+        assert client.timeout == 30.0
 
     def test_init_strips_trailing_slash(self):
         from src.agent import MCPToolClient

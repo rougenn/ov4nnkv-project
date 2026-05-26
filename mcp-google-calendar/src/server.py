@@ -9,15 +9,18 @@
 import logging
 import os
 import json
+import time
+import threading
 import uuid
 from datetime import datetime, timedelta
 from typing import Annotated
 
+import httplib2
 from dotenv import load_dotenv, find_dotenv
 from fastmcp import FastMCP
 from pydantic import Field
 from google.oauth2.credentials import Credentials
-from google.auth.transport.requests import Request
+from google_auth_httplib2 import AuthorizedHttp, Request as Httplib2Request
 from googleapiclient.discovery import build
 import pytz
 
@@ -44,75 +47,106 @@ mcp = FastMCP(
 )
 
 
+_HTTP_TIMEOUT_SEC = 15
+_CREDS_TTL_SEC = 3000  # ~50 минут (access_token живёт 3600)
+
+_creds_lock = threading.Lock()
+_creds_cache: Credentials | None = None
+_creds_cached_at: float = 0.0
+_service_cache = None
+
+
 def _get_oauth_credentials() -> Credentials:
     """Получить OAuth2 credentials из переменных окружения.
-    
+
     Поддерживает два формата:
     1. Отдельные переменные: GOOGLE_OAUTH_TOKEN, GOOGLE_REFRESH_TOKEN, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET
     2. JSON в GOOGLE_OAUTH_TOKEN: {"token": "...", "refresh_token": "...", ...}
+
+    Результат кешируется на _CREDS_TTL_SEC секунд, чтобы не дёргать refresh
+    на каждый запрос. Кеш и refresh защищены lock'ом против параллельных вызовов.
     """
-    token_value = os.getenv('GOOGLE_OAUTH_TOKEN')
-    if not token_value:
-        raise Exception("GOOGLE_OAUTH_TOKEN не найден")
-    
-    token_value = token_value.strip()
-    
-    # Пробуем распарсить как JSON
-    if token_value.startswith('{'):
-        try:
-            token_data = json.loads(token_value)
+    global _creds_cache, _creds_cached_at, _service_cache
+    with _creds_lock:
+        now = time.time()
+        if _creds_cache is not None and (now - _creds_cached_at) < _CREDS_TTL_SEC:
+            return _creds_cache
+
+        token_value = os.getenv('GOOGLE_OAUTH_TOKEN')
+        if not token_value:
+            raise Exception("GOOGLE_OAUTH_TOKEN не найден")
+
+        token_value = token_value.strip()
+
+        # Пробуем распарсить как JSON
+        if token_value.startswith('{'):
+            try:
+                token_data = json.loads(token_value)
+                creds = Credentials(
+                    token=token_data.get('token'),
+                    refresh_token=token_data.get('refresh_token'),
+                    token_uri=token_data.get('token_uri', 'https://oauth2.googleapis.com/token'),
+                    client_id=token_data.get('client_id'),
+                    client_secret=token_data.get('client_secret'),
+                    scopes=token_data.get('scopes', SCOPES)
+                )
+            except json.JSONDecodeError as e:
+                logger.error(f"JSON parse error: {e}")
+                raise
+        else:
+            refresh_token = os.getenv('GOOGLE_OAUTH_REFRESH_TOKEN') or os.getenv('GOOGLE_REFRESH_TOKEN')
+            client_id = os.getenv('GOOGLE_OAUTH_CLIENT_ID') or os.getenv('GOOGLE_CLIENT_ID')
+            client_secret = os.getenv('GOOGLE_OAUTH_CLIENT_SECRET') or os.getenv('GOOGLE_CLIENT_SECRET')
+
+            if not all([refresh_token, client_id, client_secret]):
+                raise Exception(
+                    "Для работы нужны переменные: GOOGLE_OAUTH_TOKEN, "
+                    "GOOGLE_OAUTH_REFRESH_TOKEN, GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET"
+                )
+
+            client_id = client_id.strip().strip("'\"")
+            client_secret = client_secret.strip().strip("'\"")
+            refresh_token = refresh_token.strip().strip("'\"")
+            token_value = token_value.strip().strip("'\"")
+
+            logger.info(f"Using OAuth client_id: {client_id[:20]}...")
+
             creds = Credentials(
-                token=token_data.get('token'),
-                refresh_token=token_data.get('refresh_token'),
-                token_uri=token_data.get('token_uri', 'https://oauth2.googleapis.com/token'),
-                client_id=token_data.get('client_id'),
-                client_secret=token_data.get('client_secret'),
-                scopes=token_data.get('scopes', SCOPES)
+                token=token_value,
+                refresh_token=refresh_token,
+                token_uri='https://oauth2.googleapis.com/token',
+                client_id=client_id,
+                client_secret=client_secret,
+                scopes=SCOPES
             )
-        except json.JSONDecodeError as e:
-            logger.error(f"JSON parse error: {e}")
-            raise
-    else:
-        # Отдельные переменные окружения (поддержка разных имён)
-        refresh_token = os.getenv('GOOGLE_OAUTH_REFRESH_TOKEN') or os.getenv('GOOGLE_REFRESH_TOKEN')
-        client_id = os.getenv('GOOGLE_OAUTH_CLIENT_ID') or os.getenv('GOOGLE_CLIENT_ID')
-        client_secret = os.getenv('GOOGLE_OAUTH_CLIENT_SECRET') or os.getenv('GOOGLE_CLIENT_SECRET')
-        
-        if not all([refresh_token, client_id, client_secret]):
-            raise Exception(
-                "Для работы нужны переменные: GOOGLE_OAUTH_TOKEN, "
-                "GOOGLE_OAUTH_REFRESH_TOKEN, GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET"
-            )
-        
-        # Убираем кавычки если есть
-        client_id = client_id.strip().strip("'\"")
-        client_secret = client_secret.strip().strip("'\"")
-        refresh_token = refresh_token.strip().strip("'\"")
-        token_value = token_value.strip().strip("'\"")
-        
-        logger.info(f"Using OAuth client_id: {client_id[:20]}...")
-        
-        creds = Credentials(
-            token=token_value,
-            refresh_token=refresh_token,
-            token_uri='https://oauth2.googleapis.com/token',
-            client_id=client_id,
-            client_secret=client_secret,
-            scopes=SCOPES
-        )
-    
-    # Обновляем токен если истёк
-    if not creds.valid and creds.refresh_token:
-        creds.refresh(Request())
-        logger.info("OAuth токен обновлён")
-    
-    return creds
+
+        # Принудительный refresh с таймаутом — иначе google-auth каждый запрос
+        # считает токен из env "невалидным" и рефрешит без таймаута.
+        if creds.refresh_token:
+            refresh_http = httplib2.Http(timeout=_HTTP_TIMEOUT_SEC)
+            creds.refresh(Httplib2Request(refresh_http))
+            logger.info("OAuth токен обновлён (с таймаутом)")
+
+        _creds_cache = creds
+        _creds_cached_at = now
+        _service_cache = None  # сервис надо пересобрать на новых creds
+        return creds
 
 
 def _get_calendar_service():
-    """Создать сервис Google Calendar через OAuth2."""
+    """Создать (или вернуть кеш) сервис Google Calendar через OAuth2.
+
+    AuthorizedHttp поверх httplib2 с таймаутом — иначе .execute() может
+    висеть бесконечно, если Google не отвечает.
+    """
+    global _service_cache
     creds = _get_oauth_credentials()
-    return build('calendar', 'v3', credentials=creds)
+    with _creds_lock:
+        if _service_cache is not None:
+            return _service_cache
+        http = AuthorizedHttp(creds, http=httplib2.Http(timeout=_HTTP_TIMEOUT_SEC))
+        _service_cache = build('calendar', 'v3', http=http, cache_discovery=False)
+        return _service_cache
 
 
 def _parse_datetime(dt_str: str) -> str:

@@ -1,16 +1,6 @@
-# Meeting Assistant — полная сборка через Docker Compose
-#
-# Запуск:    docker compose up --build -d
-# Логи:      docker compose logs -f <service>
-# Остановка: docker compose down
-#
-# Профили (по умолчанию выключены — включить через --profile <name>):
-#   - calendar — поднимает mcp-google-calendar (нужен Google Service Account)
-#
-# Все .env-файлы читаются из соответствующих директорий сервисов (см. README).
+name: meeting-assistant
 
 services:
-  # ─── MCP: Follow-Up (запись и транскрибация созвонов) ───
   mcp-followup:
     build: ./mcp-followup
     container_name: ma-mcp-followup
@@ -24,7 +14,6 @@ services:
     networks:
       - meeting-assistant
 
-  # ─── MCP: локальный RAG (sentence-transformers + cosine, без S3) ───
   mcp-rag-local:
     build: ./mcp-rag-local
     container_name: ma-mcp-rag-local
@@ -43,7 +32,6 @@ services:
     networks:
       - meeting-assistant
 
-  # ─── MCP: Google Calendar (опционально, профиль calendar) ───
   mcp-google-calendar:
     build: ./mcp-google-calendar
     container_name: ma-mcp-google-calendar
@@ -58,14 +46,12 @@ services:
     networks:
       - meeting-assistant
 
-  # ─── Agent (LangChain + OpenRouter) ───
   agent:
     build: ./agent
     container_name: ma-agent
     env_file:
       - ./agent/.env
     environment:
-      # Внутри docker-сети сервисы видят друг друга по имени контейнера.
       FOLLOWUP_MCP_URL: "http://mcp-followup:8000/mcp"
       MANAGED_RAG_MCP_URL: "http://mcp-rag-local:8002/mcp"
       GCALENDAR_MCP_URL: "http://mcp-google-calendar:8001/mcp"
@@ -80,7 +66,6 @@ services:
     networks:
       - meeting-assistant
 
-  # ─── Telegram Bot ───
   telegram-bot:
     build: ./telegram-bot
     container_name: ma-telegram-bot
@@ -95,8 +80,6 @@ services:
     networks:
       - meeting-assistant
 
-  # ─── Demo App (web UI) ───
-  # Хост-порт 5050, потому что 5000 на macOS занят AirPlay Receiver.
   demo-app:
     build: ./demo-app
     container_name: ma-demo-app
@@ -116,5 +99,5 @@ networks:
     driver: bridge
 
 volumes:
-  rag-store: {}     # персист JSON-базы локального RAG
-  hf-cache: {}      # кеш моделей HuggingFace (чтобы не качать при каждом ребилде)
+  rag-store: {}
+  hf-cache: {}

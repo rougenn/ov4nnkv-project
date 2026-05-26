@@ -58,16 +58,18 @@ class SyncConferenceToRAGInput(BaseModel):
 
 
 class MCPToolClient:
-    """Клиент для вызова инструментов MCP-сервера с поддержкой сессий."""
+    """Клиент для вызова инструментов MCP-сервера.
 
-    def __init__(self, mcp_url: str, timeout: float = 60.0):
+    Сессия инициализируется на каждый вызов локально — без shared state между
+    параллельными вызовами одного клиента (иначе race на self._session_id).
+    """
+
+    def __init__(self, mcp_url: str, timeout: float = 30.0):
         self.mcp_url = mcp_url.rstrip("/")
         self.timeout = timeout
-        self._session_id: Optional[str] = None
-        self._initialized = False
 
     async def _initialize_session(self, client: httpx.AsyncClient) -> str:
-        """Инициализировать MCP сессию."""
+        """Инициализировать MCP сессию и вернуть её id."""
         headers = {
             "Content-Type": "application/json",
             "Accept": "application/json, text/event-stream"
@@ -88,29 +90,20 @@ class MCPToolClient:
             }
         )
 
-        # Получаем Session ID из заголовков
-        session_id = response.headers.get("mcp-session-id")
-        if session_id:
-            self._session_id = session_id
-            self._initialized = True
-            logger.info(f"MCP session initialized: {session_id[:16]}...")
-
-        return session_id or ""
+        return response.headers.get("mcp-session-id") or ""
 
     async def call_tool(self, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """Вызвать инструмент MCP-сервера."""
         async with httpx.AsyncClient(timeout=self.timeout) as client:
-            # Инициализируем сессию если ещё не сделали
-            if not self._initialized:
-                await self._initialize_session(client)
+            session_id = await self._initialize_session(client)
 
             headers = {
                 "Content-Type": "application/json",
                 "Accept": "application/json, text/event-stream"
             }
 
-            if self._session_id:
-                headers["Mcp-Session-Id"] = self._session_id
+            if session_id:
+                headers["Mcp-Session-Id"] = session_id
 
             response = await client.post(
                 self.mcp_url,

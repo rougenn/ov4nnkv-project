@@ -373,7 +373,7 @@ class FollowUpClient:
             return "zoom"
         elif "teams.microsoft.com" in url_lower or "teams.live.com" in url_lower:
             return "msTeams"
-        elif "telemost.yandex" in url_lower:
+        elif "telemost" in url_lower and "yandex" in url_lower:
             return "telemost"
         elif "salutejazz" in url_lower or "jazz.sber" in url_lower:
             return "sbJazz"

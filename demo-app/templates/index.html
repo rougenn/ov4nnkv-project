@@ -1,0 +1,911 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Meeting Assistant — AI для корпоративных созвонов</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-0: #0a0e1a;
+            --bg-1: #121829;
+            --bg-2: #1a2238;
+            --bg-3: #232c47;
+            --border: rgba(255, 255, 255, 0.08);
+            --border-strong: rgba(255, 255, 255, 0.15);
+            --text-0: #f5f7fb;
+            --text-1: #c7cee0;
+            --text-2: #8b94ad;
+            --text-3: #5d6680;
+            --accent: #6366f1;
+            --accent-2: #8b5cf6;
+            --accent-3: #ec4899;
+            --success: #10b981;
+            --warn: #f59e0b;
+            --error: #ef4444;
+            --gradient: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #ec4899 100%);
+            --gradient-soft: linear-gradient(135deg, rgba(99, 102, 241, 0.15), rgba(139, 92, 246, 0.1), rgba(236, 72, 153, 0.05));
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body { height: 100%; }
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-0);
+            color: var(--text-0);
+            font-size: 15px;
+            line-height: 1.55;
+            min-height: 100vh;
+            position: relative;
+            overflow-x: hidden;
+        }
+        body::before {
+            content: '';
+            position: fixed;
+            top: -200px;
+            left: -200px;
+            width: 600px;
+            height: 600px;
+            background: radial-gradient(circle, rgba(99, 102, 241, 0.15) 0%, transparent 70%);
+            z-index: 0;
+            pointer-events: none;
+        }
+        body::after {
+            content: '';
+            position: fixed;
+            bottom: -300px;
+            right: -200px;
+            width: 700px;
+            height: 700px;
+            background: radial-gradient(circle, rgba(236, 72, 153, 0.1) 0%, transparent 70%);
+            z-index: 0;
+            pointer-events: none;
+        }
+        .app {
+            position: relative;
+            z-index: 1;
+            max-width: 1320px;
+            margin: 0 auto;
+            padding: 24px 24px 60px;
+        }
+
+        /* ---- Header ---- */
+        header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 0 32px;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 28px;
+            flex-wrap: wrap;
+            gap: 16px;
+        }
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+        .logo-mark {
+            width: 44px; height: 44px;
+            border-radius: 12px;
+            background: var(--gradient);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 22px;
+            box-shadow: 0 8px 24px rgba(99, 102, 241, 0.35);
+        }
+        .logo h1 {
+            font-size: 22px;
+            font-weight: 700;
+            letter-spacing: -0.3px;
+        }
+        .logo p {
+            font-size: 13px;
+            color: var(--text-2);
+            margin-top: 2px;
+        }
+        .agent-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: var(--bg-2);
+            border: 1px solid var(--border);
+            padding: 8px 14px;
+            border-radius: 100px;
+            font-size: 13px;
+            color: var(--text-1);
+            font-weight: 500;
+            transition: background 0.2s;
+        }
+        .agent-pill:hover { background: var(--bg-3); cursor: pointer; }
+        .status-dot {
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            background: var(--text-3);
+            box-shadow: 0 0 0 0 currentColor;
+        }
+        .status-dot.online { background: var(--success); box-shadow: 0 0 12px var(--success); }
+        .status-dot.offline { background: var(--error); }
+
+        /* ---- Hero ---- */
+        .hero {
+            margin-bottom: 32px;
+            text-align: center;
+            padding: 0 20px;
+        }
+        .hero h2 {
+            font-size: 38px;
+            font-weight: 800;
+            letter-spacing: -1px;
+            line-height: 1.1;
+            margin-bottom: 14px;
+            background: linear-gradient(180deg, #fff 30%, #c7cee0 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .hero p {
+            color: var(--text-2);
+            font-size: 17px;
+            max-width: 640px;
+            margin: 0 auto;
+        }
+
+        /* ---- Feature chips ---- */
+        .features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 14px;
+            margin-bottom: 32px;
+        }
+        .feature {
+            background: var(--bg-1);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 18px;
+            transition: all 0.2s;
+            position: relative;
+            overflow: hidden;
+        }
+        .feature:hover {
+            border-color: var(--border-strong);
+            transform: translateY(-2px);
+        }
+        .feature::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: var(--gradient-soft);
+            opacity: 0;
+            transition: opacity 0.3s;
+            pointer-events: none;
+        }
+        .feature:hover::before { opacity: 1; }
+        .feature-icon {
+            font-size: 24px;
+            margin-bottom: 8px;
+            position: relative;
+            z-index: 1;
+        }
+        .feature h3 {
+            font-size: 15px;
+            font-weight: 600;
+            margin-bottom: 4px;
+            position: relative;
+            z-index: 1;
+        }
+        .feature p {
+            font-size: 13px;
+            color: var(--text-2);
+            position: relative;
+            z-index: 1;
+        }
+
+        /* ---- Main layout ---- */
+        .layout {
+            display: grid;
+            grid-template-columns: 1.4fr 1fr;
+            gap: 20px;
+        }
+        @media (max-width: 980px) {
+            .layout { grid-template-columns: 1fr; }
+            .hero h2 { font-size: 28px; }
+        }
+
+        /* ---- Card ---- */
+        .card {
+            background: var(--bg-1);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            overflow: hidden;
+        }
+        .card-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border);
+            background: var(--bg-2);
+        }
+        .card-header h2 {
+            font-size: 15px;
+            font-weight: 600;
+            flex: 1;
+        }
+        .card-header .icon {
+            font-size: 18px;
+        }
+        .card-body { padding: 20px; }
+
+        /* ---- Input ---- */
+        .input-wrap {
+            position: relative;
+            margin-bottom: 14px;
+        }
+        textarea {
+            width: 100%;
+            background: var(--bg-2);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 14px 16px;
+            color: var(--text-0);
+            font-family: inherit;
+            font-size: 15px;
+            line-height: 1.5;
+            resize: vertical;
+            min-height: 100px;
+            transition: border-color 0.2s, background 0.2s;
+        }
+        textarea:focus {
+            outline: none;
+            border-color: var(--accent);
+            background: var(--bg-3);
+        }
+        textarea::placeholder { color: var(--text-3); }
+        .input-hint {
+            position: absolute;
+            bottom: 8px;
+            right: 12px;
+            font-size: 11px;
+            color: var(--text-3);
+            font-family: 'JetBrains Mono', monospace;
+            pointer-events: none;
+            opacity: 0.7;
+        }
+
+        /* ---- Buttons ---- */
+        .actions {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        .btn {
+            background: var(--gradient);
+            color: #fff;
+            border: none;
+            border-radius: 10px;
+            padding: 12px 22px;
+            font-family: inherit;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.15s, box-shadow 0.15s, opacity 0.15s;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            white-space: nowrap;
+        }
+        .btn:hover:not(:disabled) {
+            transform: translateY(-1px);
+            box-shadow: 0 10px 30px rgba(99, 102, 241, 0.35);
+        }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-ghost {
+            background: var(--bg-2);
+            border: 1px solid var(--border);
+            color: var(--text-1);
+        }
+        .btn-ghost:hover:not(:disabled) {
+            background: var(--bg-3);
+            box-shadow: none;
+        }
+
+        /* ---- Quick prompts ---- */
+        .prompts {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 14px;
+        }
+        .prompt-chip {
+            background: var(--bg-2);
+            border: 1px solid var(--border);
+            border-radius: 100px;
+            padding: 7px 14px;
+            color: var(--text-1);
+            font-size: 13px;
+            font-family: inherit;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .prompt-chip:hover {
+            background: var(--bg-3);
+            border-color: var(--accent);
+            color: var(--text-0);
+        }
+
+        /* ---- Response area ---- */
+        .response-area {
+            min-height: 200px;
+        }
+        .response-text {
+            background: var(--bg-2);
+            border-left: 3px solid var(--accent);
+            border-radius: 0 12px 12px 0;
+            padding: 18px 20px;
+            color: var(--text-0);
+            line-height: 1.65;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            font-size: 14.5px;
+        }
+        .empty-state {
+            text-align: center;
+            padding: 50px 20px;
+            color: var(--text-3);
+        }
+        .empty-state .icon {
+            font-size: 38px;
+            margin-bottom: 10px;
+            opacity: 0.4;
+        }
+        .empty-state p {
+            font-size: 14px;
+        }
+        .status-bar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 14px;
+            font-size: 12px;
+            color: var(--text-2);
+        }
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: 100px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+        .badge.success { background: rgba(16, 185, 129, 0.15); color: var(--success); }
+        .badge.error { background: rgba(239, 68, 68, 0.15); color: var(--error); }
+        .badge.working { background: rgba(245, 158, 11, 0.15); color: var(--warn); }
+
+        /* ---- Spinner ---- */
+        .loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            padding: 40px;
+            color: var(--text-2);
+            font-size: 14px;
+        }
+        .spinner {
+            width: 22px; height: 22px;
+            border: 2.5px solid rgba(99, 102, 241, 0.2);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ---- Agent card ---- */
+        .agent-card {
+            display: grid;
+            gap: 12px;
+        }
+        .info-row {
+            display: flex;
+            gap: 12px;
+            font-size: 13px;
+            padding: 8px 0;
+            border-bottom: 1px solid var(--border);
+        }
+        .info-row:last-child { border-bottom: none; }
+        .info-label {
+            color: var(--text-2);
+            min-width: 110px;
+            font-weight: 500;
+        }
+        .info-value {
+            color: var(--text-0);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            word-break: break-all;
+            flex: 1;
+        }
+        .skills-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: 8px;
+        }
+        .skill-tag {
+            background: var(--bg-2);
+            border: 1px solid var(--border);
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 11px;
+            color: var(--text-1);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        /* ---- JSON viewer ---- */
+        .json-view {
+            background: #0d1224;
+            border-radius: 10px;
+            padding: 14px 16px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            line-height: 1.6;
+            overflow-x: auto;
+            max-height: 360px;
+            overflow-y: auto;
+            white-space: pre;
+            color: var(--text-1);
+            border: 1px solid var(--border);
+        }
+        .json-key { color: #93c5fd; }
+        .json-string { color: #a7f3d0; }
+        .json-number { color: #fdba74; }
+        .json-boolean { color: #f9a8d4; }
+        .json-null { color: var(--text-3); }
+
+        /* ---- History ---- */
+        .history-list {
+            display: grid;
+            gap: 8px;
+            max-height: 320px;
+            overflow-y: auto;
+            padding-right: 4px;
+        }
+        .history-item {
+            background: var(--bg-2);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 12px 14px;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .history-item:hover {
+            background: var(--bg-3);
+            border-color: var(--border-strong);
+            transform: translateX(2px);
+        }
+        .history-meta {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 4px;
+        }
+        .history-time {
+            font-size: 11px;
+            color: var(--text-3);
+            font-family: 'JetBrains Mono', monospace;
+        }
+        .history-message {
+            color: var(--text-0);
+            font-size: 13.5px;
+            line-height: 1.4;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+        .history-empty {
+            text-align: center;
+            color: var(--text-3);
+            padding: 30px 10px;
+            font-size: 13px;
+        }
+
+        /* Tabs */
+        .tabs {
+            display: flex;
+            gap: 4px;
+            background: var(--bg-2);
+            padding: 4px;
+            border-radius: 10px;
+            margin-bottom: 14px;
+        }
+        .tab {
+            flex: 1;
+            padding: 8px 12px;
+            background: transparent;
+            border: none;
+            border-radius: 7px;
+            color: var(--text-2);
+            font-family: inherit;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .tab.active {
+            background: var(--bg-3);
+            color: var(--text-0);
+        }
+        .tab:hover:not(.active) { color: var(--text-1); }
+
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        /* Footer */
+        footer {
+            text-align: center;
+            margin-top: 40px;
+            padding-top: 24px;
+            border-top: 1px solid var(--border);
+            font-size: 12px;
+            color: var(--text-3);
+        }
+        footer code {
+            background: var(--bg-2);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: var(--bg-1); }
+        ::-webkit-scrollbar-thumb { background: var(--bg-3); border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--text-3); }
+    </style>
+</head>
+<body>
+    <div class="app">
+        <header>
+            <div class="logo">
+                <div class="logo-mark">🤖</div>
+                <div>
+                    <h1>Meeting Assistant</h1>
+                    <p>AI-агент для корпоративных созвонов</p>
+                </div>
+            </div>
+            <div class="agent-pill" id="agentStatus" onclick="loadAgentCard()">
+                <span class="status-dot" id="statusDot"></span>
+                <span id="statusText">Проверка соединения…</span>
+            </div>
+        </header>
+
+        <section class="hero">
+            <h2>Запись, транскрипция и поиск<br>по вашим встречам — через чат</h2>
+            <p>Подключите бота к Zoom/Meet/Teams для записи, получите готовые транскрипции, ищите по истории встреч и планируйте календарь — естественным языком.</p>
+        </section>
+
+        <section class="features">
+            <div class="feature">
+                <div class="feature-icon">🎙️</div>
+                <h3>Запись созвонов</h3>
+                <p>Подключение к Meet, Zoom, Teams, Телемост, Jitsi — одной ссылкой.</p>
+            </div>
+            <div class="feature">
+                <div class="feature-icon">📝</div>
+                <h3>Транскрипции</h3>
+                <p>Готовый текст после звонка, экспорт в PDF, метаданные участников.</p>
+            </div>
+            <div class="feature">
+                <div class="feature-icon">🔍</div>
+                <h3>Поиск по истории</h3>
+                <p>RAG-поиск по транскрипциям: «о чём говорили про релиз», «какие задачи у Васи».</p>
+            </div>
+            <div class="feature">
+                <div class="feature-icon">📅</div>
+                <h3>Календарь</h3>
+                <p>Создание встреч в Google Calendar естественным языком.</p>
+            </div>
+        </section>
+
+        <div class="layout">
+            <!-- LEFT: chat -->
+            <div class="card">
+                <div class="card-header">
+                    <span class="icon">💬</span>
+                    <h2>Диалог с агентом</h2>
+                    <span id="responseBadge"></span>
+                </div>
+                <div class="card-body">
+                    <div class="input-wrap">
+                        <textarea id="messageInput" placeholder="Например: «Какие встречи были на этой неделе?» или «Подключись к https://meet.google.com/...»">Подключись к созвону https://meet.google.com/abc-defg-hij и запиши его</textarea>
+                        <div class="input-hint">⌘/Ctrl + Enter</div>
+                    </div>
+                    <div class="actions">
+                        <button class="btn" id="sendBtn" onclick="sendMessage()">
+                            <span>↗</span>
+                            <span>Отправить</span>
+                        </button>
+                        <button class="btn btn-ghost" onclick="clearResponse()">Очистить</button>
+                    </div>
+
+                    <div class="prompts">
+                        <button class="prompt-chip" onclick="setPrompt('Покажи список моих последних созвонов')">📋 Мои созвоны</button>
+                        <button class="prompt-chip" onclick="setPrompt('Подключись к созвону https://meet.google.com/abc-defg-hij и запиши его')">🎙️ Записать созвон</button>
+                        <button class="prompt-chip" onclick="setPrompt('О чём говорили про бюджет на последних встречах?')">🔍 Поиск по встречам</button>
+                        <button class="prompt-chip" onclick="setPrompt('Создай встречу «Планёрка» на завтра в 11:00 на 30 минут')">📅 Создать встречу</button>
+                        <button class="prompt-chip" onclick="setPrompt('Запомни: на встрече 12.05 решили перенести релиз на 20.05')">🧠 В базу знаний</button>
+                    </div>
+
+                    <div class="response-area" style="margin-top: 24px;">
+                        <div id="responseContent">
+                            <div class="empty-state">
+                                <div class="icon">💭</div>
+                                <p>Отправьте запрос, чтобы увидеть ответ агента</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- RIGHT: tabs (agent card / json / history) -->
+            <div class="card">
+                <div class="card-header">
+                    <span class="icon">⚙️</span>
+                    <h2>Инспектор</h2>
+                </div>
+                <div class="card-body">
+                    <div class="tabs">
+                        <button class="tab active" onclick="switchTab('card')">Agent Card</button>
+                        <button class="tab" onclick="switchTab('json')">JSON</button>
+                        <button class="tab" onclick="switchTab('history')">История</button>
+                    </div>
+
+                    <div class="tab-content active" id="tab-card">
+                        <div id="agentCardContent" class="agent-card">
+                            <div class="loading">
+                                <div class="spinner"></div>
+                                <span>Загрузка agent card…</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="tab-content" id="tab-json">
+                        <div id="jsonContent" class="json-view">// JSON последнего запроса появится здесь</div>
+                    </div>
+
+                    <div class="tab-content" id="tab-history">
+                        <div id="historyContent" class="history-list">
+                            <div class="history-empty">История запросов пуста</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <footer>
+            Meeting Assistant · A2A protocol · <code id="agentUrlFooter">…</code>
+        </footer>
+    </div>
+
+<script>
+    let history = [];
+    let currentTab = 'card';
+
+    function setPrompt(text) {
+        const ta = document.getElementById('messageInput');
+        ta.value = text;
+        ta.focus();
+    }
+
+    function switchTab(name) {
+        currentTab = name;
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        event.target.classList.add('active');
+        document.getElementById('tab-' + name).classList.add('active');
+    }
+
+    function formatJson(obj) {
+        const escape = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const json = JSON.stringify(obj, null, 2);
+        return escape(json)
+            .replace(/&quot;([^&]+?)&quot;:/g, '<span class="json-key">"$1"</span>:')
+            .replace(/: &quot;([^&]*?)&quot;/g, ': <span class="json-string">"$1"</span>')
+            .replace(/: (-?\d+\.?\d*)/g, ': <span class="json-number">$1</span>')
+            .replace(/: (true|false)/g, ': <span class="json-boolean">$1</span>')
+            .replace(/: null/g, ': <span class="json-null">null</span>');
+    }
+
+    function extractAgentResponse(data) {
+        try {
+            const result = data.response.result;
+            // 1) status.message.parts (некоторые ответы агента)
+            if (result?.status?.message?.parts) {
+                const t = result.status.message.parts.filter(p => p.kind === 'text').map(p => p.text).join('\n\n');
+                if (t) return t;
+            }
+            // 2) artifacts
+            if (result?.artifacts?.length) {
+                const t = result.artifacts.flatMap(a => (a.parts || []).filter(p => p.kind === 'text').map(p => p.text)).join('\n\n');
+                if (t) return t;
+            }
+            // 3) history — последнее сообщение от агента
+            if (result?.history?.length) {
+                const agentMsgs = result.history.filter(m => m.role === 'agent');
+                if (agentMsgs.length) {
+                    const last = agentMsgs[agentMsgs.length - 1];
+                    const t = (last.parts || []).filter(p => p.kind === 'text').map(p => p.text).join('\n\n');
+                    if (t) return t;
+                }
+            }
+            return 'Агент вернул пустой ответ.';
+        } catch (e) {
+            return 'Ошибка парсинга: ' + e.message;
+        }
+    }
+
+    function clearResponse() {
+        document.getElementById('responseContent').innerHTML = `
+            <div class="empty-state">
+                <div class="icon">💭</div>
+                <p>Отправьте запрос, чтобы увидеть ответ агента</p>
+            </div>`;
+        document.getElementById('responseBadge').innerHTML = '';
+    }
+
+    async function sendMessage() {
+        const message = document.getElementById('messageInput').value.trim();
+        if (!message) return;
+
+        const btn = document.getElementById('sendBtn');
+        btn.disabled = true;
+        btn.innerHTML = '<div class="spinner" style="width:14px;height:14px;border-width:2px;"></div><span>Думаю…</span>';
+
+        document.getElementById('responseContent').innerHTML = `
+            <div class="loading">
+                <div class="spinner"></div>
+                <span>Агент обрабатывает запрос…</span>
+            </div>`;
+        document.getElementById('responseBadge').innerHTML = '<span class="badge working">⏳ working</span>';
+
+        try {
+            const response = await fetch('/api/send', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message })
+            });
+            const result = await response.json();
+
+            if (!result.success) throw new Error(result.error || 'Unknown error');
+
+            const agentText = extractAgentResponse(result.data);
+            document.getElementById('responseContent').innerHTML = `
+                <div class="response-text">${escapeHtml(agentText)}</div>`;
+            document.getElementById('responseBadge').innerHTML = '<span class="badge success">✓ ok</span>';
+            document.getElementById('jsonContent').innerHTML = formatJson(result.data);
+
+            history.unshift({
+                time: new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+                message,
+                response: agentText,
+                data: result.data
+            });
+            updateHistory();
+        } catch (error) {
+            document.getElementById('responseContent').innerHTML = `
+                <div class="response-text" style="border-left-color: var(--error); color: var(--text-1);">
+                    <strong style="color: var(--error);">Ошибка:</strong> ${escapeHtml(error.message)}
+                </div>`;
+            document.getElementById('responseBadge').innerHTML = '<span class="badge error">✕ error</span>';
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = '<span>↗</span><span>Отправить</span>';
+        }
+    }
+
+    function escapeHtml(s) {
+        return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    async function loadAgentCard() {
+        document.getElementById('agentCardContent').innerHTML = `
+            <div class="loading"><div class="spinner"></div><span>Загрузка…</span></div>`;
+        try {
+            const response = await fetch('/api/agent-card');
+            const result = await response.json();
+            if (!result.success) throw new Error(result.error);
+            const card = result.data;
+            document.getElementById('statusDot').classList.add('online');
+            document.getElementById('statusDot').classList.remove('offline');
+            document.getElementById('statusText').textContent = card.name + ' · v' + (card.version || '?');
+            document.getElementById('agentUrlFooter').textContent = card.url || '';
+
+            const skillsHtml = (card.skills || []).map(s =>
+                `<span class="skill-tag">${escapeHtml(s.id)}</span>`
+            ).join('');
+
+            document.getElementById('agentCardContent').innerHTML = `
+                <div class="info-row">
+                    <div class="info-label">Name</div>
+                    <div class="info-value">${escapeHtml(card.name || '—')}</div>
+                </div>
+                <div class="info-row">
+                    <div class="info-label">Version</div>
+                    <div class="info-value">${escapeHtml(card.version || '—')}</div>
+                </div>
+                <div class="info-row">
+                    <div class="info-label">URL</div>
+                    <div class="info-value">${escapeHtml(card.url || '—')}</div>
+                </div>
+                <div class="info-row">
+                    <div class="info-label">Streaming</div>
+                    <div class="info-value">${card.capabilities?.streaming ? '✅ enabled' : '❌ disabled'}</div>
+                </div>
+                <div class="info-row">
+                    <div class="info-label">Description</div>
+                    <div class="info-value" style="font-family: inherit; font-size: 13px;">${escapeHtml(card.description || '—')}</div>
+                </div>
+                <div class="info-row" style="display: block;">
+                    <div class="info-label" style="margin-bottom: 6px;">Skills (${(card.skills || []).length})</div>
+                    <div class="skills-list">${skillsHtml || '<span style="color: var(--text-3); font-size: 13px;">нет</span>'}</div>
+                </div>
+            `;
+        } catch (error) {
+            document.getElementById('statusDot').classList.remove('online');
+            document.getElementById('statusDot').classList.add('offline');
+            document.getElementById('statusText').textContent = 'Agent unavailable';
+            document.getElementById('agentCardContent').innerHTML = `
+                <div class="info-row">
+                    <div class="info-value" style="color: var(--error); font-family: inherit;">
+                        ${escapeHtml(error.message)}
+                    </div>
+                </div>
+                <div style="color: var(--text-3); font-size: 12px; padding: 8px 0;">
+                    Проверьте, что агент запущен: <code>docker compose up agent</code>
+                </div>`;
+        }
+    }
+
+    function updateHistory() {
+        const el = document.getElementById('historyContent');
+        if (history.length === 0) {
+            el.innerHTML = '<div class="history-empty">История запросов пуста</div>';
+            return;
+        }
+        el.innerHTML = history.map((item, i) => `
+            <div class="history-item" onclick="showHistory(${i})">
+                <div class="history-meta">
+                    <span class="history-time">${item.time}</span>
+                </div>
+                <div class="history-message">${escapeHtml(item.message)}</div>
+            </div>`).join('');
+    }
+
+    function showHistory(i) {
+        const item = history[i];
+        document.getElementById('responseContent').innerHTML = `
+            <div class="response-text">${escapeHtml(item.response)}</div>`;
+        document.getElementById('jsonContent').innerHTML = formatJson(item.data);
+        document.getElementById('responseBadge').innerHTML = '<span class="badge success">↺ replay</span>';
+    }
+
+    // Cmd/Ctrl+Enter to send
+    document.getElementById('messageInput').addEventListener('keydown', (e) => {
+        if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+            e.preventDefault();
+            sendMessage();
+        }
+    });
+
+    // On load
+    loadAgentCard();
+</script>
+</body>
+</html>

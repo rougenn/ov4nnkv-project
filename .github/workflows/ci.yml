@@ -1,0 +1,91 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  agent:
+    name: agent — lint + tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: agent
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+      - name: Set up Python
+        run: uv python install 3.12
+      - name: Sync deps
+        run: uv sync --extra dev
+      - name: Ruff
+        run: uv run ruff check src tests
+      - name: Pytest (unit + smoke; integration skipped без RUN_LLM_INTEGRATION_TESTS=1)
+        env:
+          LLM_API_KEY: sk-test-dummy
+          LLM_API_BASE: https://openrouter.ai/api/v1
+          LLM_MODEL: openai/gpt-4o-mini
+        run: uv run pytest tests/ -v
+
+  telegram-bot:
+    name: telegram-bot — lint + tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: telegram-bot
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+      - name: Set up Python
+        run: uv python install 3.12
+      - name: Sync deps
+        run: uv sync --extra dev
+      - name: Ruff (best-effort)
+        continue-on-error: true
+        run: uv run ruff check src tests config main.py
+      - name: Pytest
+        env:
+          TELEGRAM_BOT_TOKEN: test:token
+          TELEGRAM_BOT_USERNAME: test_bot
+          AGENT_API_URL: http://localhost:10000
+        run: uv run pytest tests/ -v
+
+  compose-validate:
+    name: docker compose config — синтаксис
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Создаём пустые .env для compose
+        run: |
+          for f in agent telegram-bot mcp-followup mcp-rag-local mcp-google-calendar; do
+            touch $f/.env
+          done
+      - name: docker compose config
+        run: docker compose config --quiet
+
+  mcp-followup:
+    name: mcp-followup — unit tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mcp-followup
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+      - name: Set up Python
+        run: uv python install 3.12
+      - name: Sync deps
+        run: uv sync
+      - name: Pytest (unit only)
+        continue-on-error: true
+        run: uv run pytest tests/test_unit.py -v

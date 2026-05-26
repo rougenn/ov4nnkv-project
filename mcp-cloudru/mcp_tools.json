@@ -1,0 +1,353 @@
+{
+  "tools": [
+    {
+      "name": "s3_list_buckets",
+      "description": "Получить список S3 бакетов в Cloud.ru. Возвращает список всех доступных бакетов с датой создания.",
+      "parameters": {},
+      "returns": {
+        "type": "object",
+        "description": "Результат: success (bool), count (int), buckets (array с name и creation_date)"
+      },
+      "errors": [
+        {
+          "code": "CREDENTIALS_MISSING",
+          "message": "S3 credentials не настроены"
+        },
+        {
+          "code": "LIST_BUCKETS_ERROR",
+          "message": "Ошибка получения списка бакетов"
+        }
+      ]
+    },
+    {
+      "name": "s3_list_objects",
+      "description": "Получить список файлов в S3 бакете. Возвращает список объектов с информацией о размере и дате изменения. Поддерживает фильтрацию по префиксу.",
+      "parameters": {
+        "bucket": {
+          "type": "string",
+          "description": "Имя бакета (если не указано, используется S3_BUCKET из конфигурации)",
+          "required": false
+        },
+        "prefix": {
+          "type": "string",
+          "description": "Префикс для фильтрации объектов (например, 'documents/')",
+          "required": false,
+          "default": ""
+        },
+        "max_keys": {
+          "type": "integer",
+          "description": "Максимальное количество объектов (1-1000)",
+          "required": false,
+          "default": 50
+        }
+      },
+      "returns": {
+        "type": "object",
+        "description": "Результат: success (bool), bucket (string), prefix (string), objects (array с key, size, last_modified, etag), count (int), is_truncated (bool)"
+      },
+      "errors": [
+        {
+          "code": "NO_BUCKET",
+          "message": "Бакет не указан"
+        },
+        {
+          "code": "AccessDenied",
+          "message": "Доступ к бакету запрещён"
+        }
+      ]
+    },
+    {
+      "name": "s3_upload_text",
+      "description": "Загрузить текстовый файл в S3 бакет. Используйте для загрузки текстовых документов, markdown файлов, JSON и т.д.",
+      "parameters": {
+        "key": {
+          "type": "string",
+          "description": "Ключ объекта (путь в бакете, например: 'documents/report.txt')",
+          "required": true
+        },
+        "content": {
+          "type": "string",
+          "description": "Текстовое содержимое файла",
+          "required": true
+        },
+        "bucket": {
+          "type": "string",
+          "description": "Имя бакета (если не указано, используется S3_BUCKET)",
+          "required": false
+        },
+        "content_type": {
+          "type": "string",
+          "description": "MIME тип (text/plain, text/markdown, application/json и т.д.)",
+          "required": false,
+          "default": "text/plain"
+        }
+      },
+      "returns": {
+        "type": "object",
+        "description": "Результат: success (bool), bucket (string), key (string), etag (string), size (int), content_type (string), url (string)"
+      },
+      "errors": [
+        {
+          "code": "INVALID_KEY",
+          "message": "Ключ объекта не может быть пустым"
+        },
+        {
+          "code": "EMPTY_CONTENT",
+          "message": "Содержимое файла не может быть пустым"
+        },
+        {
+          "code": "NO_BUCKET",
+          "message": "Бакет не указан"
+        }
+      ]
+    },
+    {
+      "name": "s3_download_text",
+      "description": "Скачать текстовый файл из S3 бакета. Возвращает содержимое файла как текст.",
+      "parameters": {
+        "key": {
+          "type": "string",
+          "description": "Ключ объекта (путь в бакете)",
+          "required": true
+        },
+        "bucket": {
+          "type": "string",
+          "description": "Имя бакета",
+          "required": false
+        }
+      },
+      "returns": {
+        "type": "object",
+        "description": "Результат: success (bool), content (string), bucket (string), key (string), content_type (string), size (int), last_modified (string), metadata (object)"
+      },
+      "errors": [
+        {
+          "code": "INVALID_KEY",
+          "message": "Ключ объекта не может быть пустым"
+        },
+        {
+          "code": "NOT_FOUND",
+          "message": "Объект не найден"
+        }
+      ]
+    },
+    {
+      "name": "s3_delete_file",
+      "description": "Удалить файл из S3 бакета. Внимание: операция необратима!",
+      "parameters": {
+        "key": {
+          "type": "string",
+          "description": "Ключ объекта для удаления",
+          "required": true
+        },
+        "bucket": {
+          "type": "string",
+          "description": "Имя бакета",
+          "required": false
+        }
+      },
+      "returns": {
+        "type": "object",
+        "description": "Результат: success (bool), bucket (string), key (string), version_id (string)"
+      },
+      "errors": [
+        {
+          "code": "INVALID_KEY",
+          "message": "Ключ объекта не может быть пустым"
+        },
+        {
+          "code": "AccessDenied",
+          "message": "Доступ запрещён"
+        }
+      ]
+    },
+    {
+      "name": "rag_search",
+      "description": "Семантический поиск по базе знаний RAG. Выполняет поиск по индексированным документам и возвращает наиболее релевантные фрагменты. Используйте для поиска информации в документах, ответов на вопросы по содержимому базы знаний, нахождения релевантных фрагментов текста.",
+      "parameters": {
+        "query": {
+          "type": "string",
+          "description": "Поисковый запрос на естественном языке",
+          "required": true
+        },
+        "num_results": {
+          "type": "integer",
+          "description": "Количество результатов (1-20)",
+          "required": false,
+          "default": 5
+        }
+      },
+      "returns": {
+        "type": "object",
+        "description": "Результат: success (bool), query (string), version_id (string), count (int), results (array с id, content, score, metadata)"
+      },
+      "errors": [
+        {
+          "code": "EMPTY_QUERY",
+          "message": "Поисковый запрос не может быть пустым"
+        },
+        {
+          "code": "CONFIG_MISSING",
+          "message": "RAG не настроен (RAG_PUBLIC_URL или RAG_VERSION_ID)"
+        },
+        {
+          "code": "RETRIEVE_ERROR",
+          "message": "Ошибка поиска"
+        }
+      ]
+    },
+    {
+      "name": "rag_search_advanced",
+      "description": "Продвинутый поиск по базе знаний RAG с ререйнкингом. Выполняет двухэтапный поиск: первичный поиск для получения кандидатов, затем ререйнкинг для улучшения релевантности результатов. Используйте для более точных результатов поиска.",
+      "parameters": {
+        "query": {
+          "type": "string",
+          "description": "Поисковый запрос на естественном языке",
+          "required": true
+        },
+        "num_results": {
+          "type": "integer",
+          "description": "Количество результатов первичного поиска (1-50)",
+          "required": false,
+          "default": 10
+        },
+        "num_reranked": {
+          "type": "integer",
+          "description": "Количество результатов после ререйнкинга (1-20)",
+          "required": false,
+          "default": 5
+        },
+        "retrieval_type": {
+          "type": "string",
+          "description": "Тип поиска: SEMANTIC, KEYWORD или HYBRID",
+          "required": false,
+          "default": "SEMANTIC"
+        }
+      },
+      "returns": {
+        "type": "object",
+        "description": "Результат: success (bool), query (string), version_id (string), reranked (bool), count (int), results (array с id, content, score, metadata)"
+      },
+      "errors": [
+        {
+          "code": "EMPTY_QUERY",
+          "message": "Поисковый запрос не может быть пустым"
+        },
+        {
+          "code": "INVALID_RETRIEVAL_TYPE",
+          "message": "retrieval_type должен быть SEMANTIC, KEYWORD или HYBRID"
+        },
+        {
+          "code": "CONFIG_MISSING",
+          "message": "RAG не настроен"
+        },
+        {
+          "code": "RETRIEVE_ERROR",
+          "message": "Ошибка поиска с ререйнкингом"
+        }
+      ]
+    },
+    {
+      "name": "rag_start_indexing",
+      "description": "Запустить индексацию RAG — создание новой версии базы знаний. Сканирует документы в S3 бакете и создаёт новую версию RAG с индексированными данными. Поддерживаемые форматы: txt, md, pdf. Используйте когда добавили новые документы в S3, нужно обновить базу знаний или хотите переиндексировать документы.",
+      "parameters": {
+        "s3_prefix": {
+          "type": "string",
+          "description": "Префикс в S3 бакете для индексации (например, 'documents/'). Пустая строка = весь бакет",
+          "required": false,
+          "default": ""
+        },
+        "description": {
+          "type": "string",
+          "description": "Описание новой версии RAG",
+          "required": false,
+          "default": ""
+        },
+        "extensions": {
+          "type": "string",
+          "description": "Расширения файлов через запятую (например: 'txt,md,pdf')",
+          "required": false,
+          "default": "txt,md,pdf"
+        }
+      },
+      "returns": {
+        "type": "object",
+        "description": "Результат: success (bool), message (string), rag_id (string), project_id (string), s3_bucket (string), s3_prefix (string), extensions (array), response (object)"
+      },
+      "errors": [
+        {
+          "code": "INVALID_EXTENSIONS",
+          "message": "Недопустимые расширения файлов"
+        },
+        {
+          "code": "CREDENTIALS_MISSING",
+          "message": "Indexing credentials не настроены"
+        },
+        {
+          "code": "TOKEN_ERROR",
+          "message": "Ошибка получения токена индексации"
+        },
+        {
+          "code": "INDEXING_ERROR",
+          "message": "Ошибка запуска индексации"
+        }
+      ]
+    },
+    {
+      "name": "rag_get_versions",
+      "description": "Получить список всех версий RAG с их статусами. Возвращает ID версии, статус (READY, RUNNING, FAILED), дату создания и описание. Используйте для проверки статуса индексации и просмотра доступных версий.",
+      "parameters": {},
+      "returns": {
+        "type": "object",
+        "description": "Результат: success (bool), count (int), versions (array с id, status, created_at, description)"
+      },
+      "errors": [
+        {
+          "code": "GET_VERSIONS_ERROR",
+          "message": "Ошибка получения версий"
+        }
+      ]
+    },
+    {
+      "name": "rag_update_version",
+      "description": "Обновить RAG на последнюю готовую версию. Автоматически находит последнюю версию со статусом READY и переключает поиск на неё. Используйте после завершения индексации.",
+      "parameters": {},
+      "returns": {
+        "type": "object",
+        "description": "Результат: success (bool), old_version (string), new_version (string), message (string)"
+      },
+      "errors": [
+        {
+          "code": "NO_READY_VERSION",
+          "message": "Не найдено готовых версий RAG"
+        }
+      ]
+    }
+  ],
+  "metadata": {
+    "version": "1.0.6",
+    "server_name": "mcp-cloudru",
+    "description": "MCP сервер для работы с Cloud.ru сервисами: S3 Object Storage и Managed RAG",
+    "transport": "streamable-http",
+    "docker_image": "meeting-assistant.cr.cloud.ru/mcp-cloudru:latest",
+    "environment_variables": [
+      "CLOUD_TENANT_ID",
+      "CLOUD_KEY_ID",
+      "CLOUD_SECRET",
+      "S3_BUCKET",
+      "S3_BUCKET_ID",
+      "RAG_PUBLIC_URL",
+      "RAG_VERSION_ID",
+      "RAG_ID",
+      "PROJECT_ID",
+      "PRODUCT_INSTANCE_ID",
+      "RAG_INDEXING_KEY_ID",
+      "RAG_INDEXING_SECRET"
+    ]
+  }
+}
+
+
+
+
+

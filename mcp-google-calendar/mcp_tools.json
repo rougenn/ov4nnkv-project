@@ -1,0 +1,80 @@
+{
+  "name": "mcp-google-calendar",
+  "version": "0.2.0",
+  "description": "MCP сервер для Google Calendar с поддержкой гостей и Google Meet",
+  "tools": [
+    {
+      "name": "get_current_time_moscow",
+      "description": "Получить текущее время по Москве",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    },
+    {
+      "name": "create_calendar_event",
+      "description": "Создать событие в Google Calendar. Можно добавить участников (им придут приглашения) и Google Meet.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "Название события"
+          },
+          "start_time": {
+            "type": "string",
+            "description": "Время начала (2025-12-11T14:00:00 или 2025-12-11 14:00)"
+          },
+          "end_time": {
+            "type": "string",
+            "description": "Время окончания"
+          },
+          "description": {
+            "type": "string",
+            "description": "Описание события"
+          },
+          "attendees": {
+            "type": "string",
+            "description": "Email участников через запятую (user1@gmail.com, user2@gmail.com)"
+          },
+          "add_google_meet": {
+            "type": "boolean",
+            "description": "Добавить Google Meet видеоконференцию",
+            "default": false
+          }
+        },
+        "required": ["title", "start_time", "end_time"]
+      }
+    },
+    {
+      "name": "get_events_for_date",
+      "description": "Получить события за день",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "description": "Дата YYYY-MM-DD (по умолчанию сегодня)"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "get_upcoming_events",
+      "description": "Получить события на N дней вперёд",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "days_ahead": {
+            "type": "integer",
+            "description": "Дней вперёд (1-30)",
+            "default": 7
+          }
+        },
+        "required": []
+      }
+    }
+  ]
+}

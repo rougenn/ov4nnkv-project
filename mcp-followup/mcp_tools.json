@@ -1,0 +1,182 @@
+{
+  "tools": [
+    {
+      "name": "join_conference",
+      "description": "Подключить бота Follow-Up к созвону для записи и транскрибации. Бот присоединится к указанному созвону и начнёт запись. После завершения созвона транскрипция будет доступна через get_transcription. Поддерживаемые платформы: Google Meet, Zoom, MS Teams, Яндекс Телемост, SaluteJazz, КонтурТолк, JitsiMeet.",
+      "parameters": {
+        "conference_url": {
+          "type": "string",
+          "description": "Ссылка на созвон (Zoom, Google Meet, MS Teams, Яндекс Телемост, SaluteJazz, КонтурТолк, JitsiMeet)",
+          "required": true
+        },
+        "theme": {
+          "type": "string",
+          "description": "Название/тема созвона для идентификации в списке записей",
+          "required": false,
+          "default": "Созвон"
+        }
+      },
+      "returns": {
+        "type": "object",
+        "description": "Результат подключения: success (bool), conference_id (string), message (string), details (object с url, theme, status)"
+      },
+      "errors": [
+        {
+          "code": "INVALID_URL",
+          "message": "Невалидный URL созвона"
+        },
+        {
+          "code": "AUTH_ERROR",
+          "message": "Ошибка авторизации в Follow-Up API"
+        },
+        {
+          "code": "NETWORK_ERROR",
+          "message": "Сетевая ошибка при подключении к API"
+        },
+        {
+          "code": "ALREADY_CONNECTED",
+          "message": "Бот уже подключен к этому созвону"
+        }
+      ]
+    },
+    {
+      "name": "get_transcription",
+      "description": "Получить транскрипцию завершённого созвона. Возвращает полный текст транскрипции с метаданными: название встречи, дата и время, длительность, список участников, текст транскрипции. Транскрипция доступна только после завершения созвона и обработки записи.",
+      "parameters": {
+        "conference_id": {
+          "type": "string",
+          "description": "ID созвона из Follow-Up (UUID формат, например: 34faff15-20a3-4dee-b212-3c0a3604e239)",
+          "required": true
+        }
+      },
+      "returns": {
+        "type": "object",
+        "description": "Результат с транскрипцией: success (bool), conference_id (string), title (string), date (string), duration_minutes (int), participants (array), transcription (string), status (string)"
+      },
+      "errors": [
+        {
+          "code": "INVALID_ID",
+          "message": "Некорректный формат ID конференции"
+        },
+        {
+          "code": "NOT_FOUND",
+          "message": "Созвон не найден"
+        },
+        {
+          "code": "TRANSCRIPTION_NOT_READY",
+          "message": "Транскрипция ещё не готова"
+        },
+        {
+          "code": "NO_RECORDING",
+          "message": "Созвон без записи"
+        }
+      ]
+    },
+    {
+      "name": "list_conferences",
+      "description": "Получить список записанных созвонов. Возвращает список всех созвонов с базовой информацией: ID созвона, название/тема, дата проведения, длительность, статус. Поддерживает пагинацию через параметры limit и offset.",
+      "parameters": {
+        "limit": {
+          "type": "integer",
+          "description": "Количество записей (от 1 до 100)",
+          "required": false,
+          "default": 20
+        },
+        "offset": {
+          "type": "integer",
+          "description": "Смещение для пагинации (начиная с 0)",
+          "required": false,
+          "default": 0
+        }
+      },
+      "returns": {
+        "type": "object",
+        "description": "Результат со списком созвонов: success (bool), total (int), limit (int), offset (int), conferences (array с id, title, date, duration_minutes, status)"
+      },
+      "errors": [
+        {
+          "code": "INVALID_PARAMETER",
+          "message": "Невалидные параметры limit или offset"
+        },
+        {
+          "code": "AUTH_ERROR",
+          "message": "Ошибка авторизации в Follow-Up API"
+        }
+      ]
+    },
+    {
+      "name": "get_conference_info",
+      "description": "Получить метаданные созвона (без транскрипции). Возвращает информацию о созвоне: ID созвона, название/тема, дата и время, длительность, список участников, статус созвона, наличие транскрипции. Полезно для проверки статуса созвона или получения метаданных без загрузки полной транскрипции.",
+      "parameters": {
+        "conference_id": {
+          "type": "string",
+          "description": "ID созвона из Follow-Up (UUID формат, например: 34faff15-20a3-4dee-b212-3c0a3604e239)",
+          "required": true
+        }
+      },
+      "returns": {
+        "type": "object",
+        "description": "Метаданные созвона: success (bool), id (string), title (string), date (string), duration_minutes (int), participants (array), status (string), has_transcription (bool)"
+      },
+      "errors": [
+        {
+          "code": "INVALID_ID",
+          "message": "Некорректный формат ID конференции"
+        },
+        {
+          "code": "NOT_FOUND",
+          "message": "Созвон не найден или доступ запрещён"
+        }
+      ]
+    },
+    {
+      "name": "download_conference_pdf",
+      "description": "Скачать PDF отчёт с транскрипцией созвона. Возвращает PDF файл в формате base64 для дальнейшего сохранения или отправки. PDF содержит полную транскрипцию созвона в отформатированном виде. Используйте когда пользователь просит скачать PDF, экспортировать созвон в PDF или получить PDF файл встречи.",
+      "parameters": {
+        "conference_id": {
+          "type": "string",
+          "description": "ID созвона из Follow-Up (UUID формат, например: 34faff15-20a3-4dee-b212-3c0a3604e239)",
+          "required": true
+        }
+      },
+      "returns": {
+        "type": "object",
+        "description": "Результат скачивания: success (bool), conference_id (string), filename (string), content_type (string), size_bytes (int), pdf_base64 (string - содержимое PDF в base64), message (string)"
+      },
+      "errors": [
+        {
+          "code": "INVALID_ID",
+          "message": "Некорректный формат ID конференции"
+        },
+        {
+          "code": "NOT_FOUND",
+          "message": "Созвон не найден или PDF недоступен"
+        },
+        {
+          "code": "CONFIG_ERROR",
+          "message": "Для скачивания PDF требуются FOLLOWUP_EMAIL и FOLLOWUP_PASSWORD"
+        },
+        {
+          "code": "AUTH_ERROR",
+          "message": "Ошибка авторизации"
+        }
+      ]
+    }
+  ],
+  "metadata": {
+    "version": "1.1.0",
+    "server_name": "mcp-followup",
+    "description": "MCP сервер для интеграции с Follow-Up API — сервисом записи и транскрибации корпоративных созвонов",
+    "transport": "streamable-http",
+    "supported_platforms": [
+      "Google Meet",
+      "Zoom",
+      "MS Teams",
+      "Яндекс Телемост",
+      "SaluteJazz",
+      "КонтурТолк",
+      "JitsiMeet"
+    ]
+  }
+}
+

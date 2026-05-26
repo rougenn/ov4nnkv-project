@@ -1,0 +1,120 @@
+# Meeting Assistant — полная сборка через Docker Compose
+#
+# Запуск:    docker compose up --build -d
+# Логи:      docker compose logs -f <service>
+# Остановка: docker compose down
+#
+# Профили (по умолчанию выключены — включить через --profile <name>):
+#   - calendar — поднимает mcp-google-calendar (нужен Google Service Account)
+#
+# Все .env-файлы читаются из соответствующих директорий сервисов (см. README).
+
+services:
+  # ─── MCP: Follow-Up (запись и транскрибация созвонов) ───
+  mcp-followup:
+    build: ./mcp-followup
+    container_name: ma-mcp-followup
+    env_file:
+      - ./mcp-followup/.env
+    environment:
+      PORT: "8000"
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+    networks:
+      - meeting-assistant
+
+  # ─── MCP: локальный RAG (sentence-transformers + cosine, без S3) ───
+  mcp-rag-local:
+    build: ./mcp-rag-local
+    container_name: ma-mcp-rag-local
+    env_file:
+      - ./mcp-rag-local/.env
+    environment:
+      PORT: "8002"
+      RAG_STORE_PATH: "/app/data/rag_store.json"
+      HF_HOME: "/app/.hf_cache"
+    ports:
+      - "8002:8002"
+    volumes:
+      - rag-store:/app/data
+      - hf-cache:/app/.hf_cache
+    restart: unless-stopped
+    networks:
+      - meeting-assistant
+
+  # ─── MCP: Google Calendar (опционально, профиль calendar) ───
+  mcp-google-calendar:
+    build: ./mcp-google-calendar
+    container_name: ma-mcp-google-calendar
+    profiles: ["calendar"]
+    env_file:
+      - ./mcp-google-calendar/.env
+    environment:
+      PORT: "8001"
+    ports:
+      - "8001:8001"
+    restart: unless-stopped
+    networks:
+      - meeting-assistant
+
+  # ─── Agent (LangChain + OpenRouter) ───
+  agent:
+    build: ./agent
+    container_name: ma-agent
+    env_file:
+      - ./agent/.env
+    environment:
+      # Внутри docker-сети сервисы видят друг друга по имени контейнера.
+      FOLLOWUP_MCP_URL: "http://mcp-followup:8000/mcp"
+      MANAGED_RAG_MCP_URL: "http://mcp-rag-local:8002/mcp"
+      GCALENDAR_MCP_URL: "http://mcp-google-calendar:8001/mcp"
+      URL_AGENT: "http://agent:10000"
+      PORT: "10000"
+    ports:
+      - "10000:10000"
+    depends_on:
+      - mcp-followup
+      - mcp-rag-local
+    restart: unless-stopped
+    networks:
+      - meeting-assistant
+
+  # ─── Telegram Bot ───
+  telegram-bot:
+    build: ./telegram-bot
+    container_name: ma-telegram-bot
+    env_file:
+      - ./telegram-bot/.env
+    environment:
+      AGENT_API_URL: "http://agent:10000"
+      AUTO_CONNECT_ON_START: "true"
+    depends_on:
+      - agent
+    restart: unless-stopped
+    networks:
+      - meeting-assistant
+
+  # ─── Demo App (web UI) ───
+  # Хост-порт 5050, потому что 5000 на macOS занят AirPlay Receiver.
+  demo-app:
+    build: ./demo-app
+    container_name: ma-demo-app
+    environment:
+      AGENT_BASE_URL: "http://agent:10000"
+      PORT: "5000"
+    ports:
+      - "5050:5000"
+    depends_on:
+      - agent
+    restart: unless-stopped
+    networks:
+      - meeting-assistant
+
+networks:
+  meeting-assistant:
+    driver: bridge
+
+volumes:
+  rag-store: {}     # персист JSON-базы локального RAG
+  hf-cache: {}      # кеш моделей HuggingFace (чтобы не качать при каждом ребилде)

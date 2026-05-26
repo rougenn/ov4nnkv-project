@@ -1,238 +1,234 @@
 # 👥 Распределение ролей (команда из 4 человек)
 
-Проект — микросервисная платформа: AI-агент с tool-calling, 3 MCP-сервера для внешних интеграций, два клиента (Telegram-бот и веб-UI), всё через Docker Compose. Разбит на **4 равноценные зоны ответственности** по техническому стеку.
+Проект — микросервисная платформа: AI-агент с tool-calling, MCP-серверы для внешних интеграций, два клиента (Telegram-бот и веб-UI), всё через Docker Compose. Разбит на **4 равноценные зоны**: 2 ML-инженера + 2 backend-инженера.
 
-| # | Роль | Кодовая база | Ключевые технологии |
-|---|---|---:|---|
-| 1 | **AI/ML Engineer** — Агент и RAG | ~30% | LangChain, эмбеддинги, vector search |
-| 2 | **Backend Engineer** — Внешние API | ~30% | FastMCP, httpx, OAuth, Google APIs |
-| 3 | **Frontend / DevOps** — UI и инфра | ~20% | Flask, JS/CSS, Docker, CI |
-| 4 | **Bot / QA Engineer** — Бот и тесты | ~20% | aiogram, asyncio, SSE, pytest |
+| # | Роль | Зона | Стек |
+|---|---|---|---|
+| 1 | **ML Engineer #1** — Agent | LangChain агент, A2A | LangChain, OpenRouter, A2A SDK |
+| 2 | **ML Engineer #2** — RAG | поиск по знаниям, эмбеддинги | sentence-transformers, FastMCP, NumPy |
+| 3 | **Backend #1** — External APIs | MCP интеграции | httpx, OAuth, FastMCP, Google APIs |
+| 4 | **Backend #2** — Bot + Infra | TG-бот, Docker, CI | aiogram, asyncio, SSE, Docker |
+
+> Тесты по своим модулям и веб-UI demo-app генерились AI (Claude/ChatGPT), потому отдельных QA/Frontend ролей нет — каждый поддерживает тесты в своей зоне.
 
 ---
 
-## 👤 Человек 1 — AI/ML Engineer
+## 👤 Человек 1 — ML Engineer #1 (Agent)
 
-**Что сделал**: спроектировал LangChain-агента, настроил tool-calling через OpenRouter, реализовал локальный RAG с sentence-transformers.
+**Что сделал**: спроектировал LangChain-агента с tool-calling, обернул его в A2A-протокол для общения с клиентами, настроил подключение к LLM-провайдеру (OpenRouter с возможностью переключения на Gemini/OpenAI), написал системный промпт.
 
 ### Зона ответственности
 
 ```
 agent/                          ← LangChain агент + A2A wrapper
-├── src/agent.py                  ← фабрика агента, 11 tools, MCPToolClient
-├── src/prompts.py                ← system prompt (10 KB русского текста)
-├── src/a2a_wrapper.py            ← обёртка LangChain → A2A protocol
-├── src/agent_task_manager.py     ← A2A task executor + streaming
-└── src/start_a2a.py              ← uvicorn entrypoint
-
-mcp-rag-local/                  ← локальный RAG MCP-сервер
-├── src/store.py                  ← in-memory cosine + JSON-persist
-├── src/server.py                 ← FastMCP с tools: search/add_document/rag_stats
-└── tests/test_store.py           ← unit-тесты для vector store
+├── src/agent.py                  ← 🌟 главный файл:
+│                                   - фабрика create_meeting_assistant_agent()
+│                                   - 11 StructuredTool (5 followup + 4 calendar + 2 rag)
+│                                   - класс MCPToolClient (HTTP к MCP-серверам)
+│                                   - подключение ChatOpenAI к OpenRouter/Gemini
+├── src/prompts.py                ← system prompt (~10 КБ русского текста,
+│                                   описание поведения, few-shot примеры)
+├── src/a2a_wrapper.py            ← обёртка LangChain → A2A:
+│                                   - invoke (blocking)
+│                                   - stream (для live-обновлений)
+├── src/agent_task_manager.py     ← A2A task executor
+└── src/start_a2a.py              ← uvicorn entrypoint, AgentCard, AgentSkill
 ```
 
 ### Что умеет рассказать на защите
 
-- Как LLM становится агентом (tool-calling loop: LLM → JSON → exec → result → LLM)
-- Почему `langchain-openai.ChatOpenAI` — работает с любым OpenAI-совместимым провайдером (OpenRouter, Gemini, OpenAI, Together…)
-- Pydantic-схемы → автоматическая JSON-схема tools для LLM
-- Почему **локальный RAG без S3**: sentence-transformers (470 МБ модель) + numpy cosine, персист в JSON. Преимущества над managed-сервисами для демо.
-- Почему `paraphrase-multilingual-MiniLM-L12-v2`: 384 dim, мультиязычная, работает на CPU.
-- MCP-протокол: зачем выносить tools в отдельные серверы.
+- **Tool-calling loop**: LLM получает описания tools (JSON-схемы из Pydantic), возвращает `tool_calls`, LangChain парсит → дёргает функцию → результат обратно в LLM → финальный ответ.
+- **Почему `langchain-openai.ChatOpenAI`**: один клиент работает с любым OpenAI-совместимым провайдером — OpenRouter, Gemini (через `generativelanguage.googleapis.com/v1beta/openai`), OpenAI, Together, Groq. Меняешь только 3 env-переменные.
+- **System prompt engineering**: чему учить агента — парсинг "завтра в 15:00" → ISO 8601, определение платформы по URL, выбор tool под задачу. Без хорошего промпта tool-calling работает плохо.
+- **A2A protocol** (Agent-to-Agent от Anthropic-партнёрки): JSON-RPC методы `message/send` и `message/stream`, AgentCard для discovery (`.well-known/agent-card.json`).
+- **MCPToolClient**: как подключать MCP-серверы по HTTP — `initialize` → получить `Mcp-Session-Id` → `tools/call` с SSE-парсингом ответа.
 
 ### Файлы в зоне
 
-[agent/src/agent.py](agent/src/agent.py), [agent/src/prompts.py](agent/src/prompts.py), [agent/src/a2a_wrapper.py](agent/src/a2a_wrapper.py), [agent/src/agent_task_manager.py](agent/src/agent_task_manager.py), [agent/src/start_a2a.py](agent/src/start_a2a.py), [mcp-rag-local/src/store.py](mcp-rag-local/src/store.py), [mcp-rag-local/src/server.py](mcp-rag-local/src/server.py), [agent/tests/test_agent.py](agent/tests/test_agent.py), [agent/tests/test_smoke.py](agent/tests/test_smoke.py), [mcp-rag-local/tests/test_store.py](mcp-rag-local/tests/test_store.py).
-
-### Тесты (его)
-- `agent/tests/` — 25 passed (smoke + unit для tool factories, MCPToolClient, A2A wrapper)
-- `mcp-rag-local/tests/` — 8 passed (add, search, persist, cosine ranking)
-- `agent/tests/test_integration.py` — 2 (skipped, дорогие LLM-вызовы)
+[agent/src/agent.py](agent/src/agent.py), [agent/src/prompts.py](agent/src/prompts.py), [agent/src/a2a_wrapper.py](agent/src/a2a_wrapper.py), [agent/src/agent_task_manager.py](agent/src/agent_task_manager.py), [agent/src/start_a2a.py](agent/src/start_a2a.py), [agent/scripts/test_llm_api.py](agent/scripts/test_llm_api.py), [agent/.env.example](agent/.env.example), [agent/.env.gemini.example](agent/.env.gemini.example).
 
 ---
 
-## 👤 Человек 2 — Backend Engineer (внешние API)
+## 👤 Человек 2 — ML Engineer #2 (RAG)
 
-**Что сделал**: интегрировал два внешних сервиса (Follow-Up для записи созвонов и Google Calendar для событий) через MCP-обёртки.
+**Что сделал**: спроектировал и реализовал локальный RAG-сервис без облака (sentence-transformers + cosine similarity + JSON-персист), упаковал его в MCP-сервер для агента; провёл подбор embedding-модели.
+
+### Зона ответственности
+
+```
+mcp-rag-local/                  ← локальный RAG MCP-сервер
+├── src/store.py                  ← 🌟 vector store:
+│                                   - add(content, metadata) → embedding via SentenceTransformer
+│                                   - search(query, top_k) → cosine similarity через NumPy
+│                                   - персист в JSON (volume rag-store в Docker)
+├── src/server.py                 ← FastMCP-обёртка:
+│                                   - tools: search, add_document, rag_stats
+│                                   - lazy-init embedder (модель грузится при первом запросе)
+│                                   - force CPU (на Apple Silicon MPS-init крашит процесс)
+│                                   - HF_HUB_DISABLE_XET=1 (xet downloader сегфолтит)
+├── .env.example                  ← конфиг: EMBEDDING_MODEL, RAG_STORE_PATH
+├── Dockerfile                    ← volume для hf-cache (модель ~470 МБ скачивается 1 раз)
+└── tests/test_store.py           ← 8 unit-тестов с фейковым embedder'ом
+```
+
+### Что умеет рассказать на защите
+
+- **Почему локальный RAG, а не Pinecone/Weaviate/Cloud-managed**: для демо проще, никаких облачных аккаунтов, всё в JSON, легко чистится (`docker compose down -v`).
+- **Выбор модели**: `paraphrase-multilingual-MiniLM-L12-v2` — 384 dim, мультиязычная, CPU-friendly, 470 МБ. Альтернативы: `e5-small-multilingual` (тоже мультиязычная), `bge-small` (быстрее, английская).
+- **Cosine similarity через NumPy**: `embs @ q` после `normalize_embeddings=True` — это уже cosine. Один matmul на N документов. Для 10K документов работает за <100 мс.
+- **MCP интерфейс совместим с managed-RAG**: tools называются `search` / `add_document`, агент может подменить URL без правок кода.
+- **Подводные камни деплоя**: на macOS Apple Silicon (MPS) sentence-transformers иногда крашит процесс при первой загрузке через `hf_xet`. Решение: `device="cpu"` + `HF_HUB_DISABLE_XET=1`.
+- **Стриминг tool-событий**: A2A `message/stream` отдаёт SSE с `status-update` / `artifact-update`. Когда агент дёргает `search_knowledge_base`, в стриме появляется `🔧 Использую инструмент: search_knowledge_base` — это видно в TG-боте.
+
+### Файлы в зоне
+
+[mcp-rag-local/src/store.py](mcp-rag-local/src/store.py), [mcp-rag-local/src/server.py](mcp-rag-local/src/server.py), [mcp-rag-local/Dockerfile](mcp-rag-local/Dockerfile), [mcp-rag-local/.env.example](mcp-rag-local/.env.example), [mcp-rag-local/pyproject.toml](mcp-rag-local/pyproject.toml), [mcp-rag-local/tests/test_store.py](mcp-rag-local/tests/test_store.py).
+
+Также — RAG-tools в агенте: [agent/src/agent.py:create_rag_tools](agent/src/agent.py) (фабрика RAG-обёрток для LangChain).
+
+---
+
+## 👤 Человек 3 — Backend Engineer #1 (External APIs)
+
+**Что сделал**: интегрировал два внешних сервиса — Follow-Up для записи созвонов и Google Calendar для событий. Каждый завернул в отдельный MCP-сервер, чтобы агент мог их дёргать как tools.
 
 ### Зона ответственности
 
 ```
 mcp-followup/                   ← запись и транскрибация созвонов
-├── src/followup_client.py        ← HTTP-клиент Follow-Up API + auth + retry
-├── src/server.py                 ← FastMCP с tools: join_conference, get_transcription,
-│                                   list_conferences, get_conference_info,
-│                                   download_conference_pdf, sync_conference_to_rag
-├── src/rag_s3_client.py          ← S3-загрузка транскрипций (boto3)
-└── tests/test_unit.py            ← unit-тесты с моками httpx
+├── src/followup_client.py        ← 🌟 HTTP-клиент Follow-Up API:
+│                                   - JWT-логин через /api/login → Bearer-token
+│                                   - авто-rerefresh на 401
+│                                   - детекция платформы ВКС по URL
+│                                     (Meet, Zoom, Teams, Телемост, Jitsi, SaluteJazz, КонтурТолк)
+│                                   - download PDF через lk.follow-up.tech (next-auth CSRF)
+├── src/server.py                 ← FastMCP, 6 tools:
+│                                   - join_conference, get_transcription,
+│                                     list_conferences, get_conference_info,
+│                                     download_conference_pdf, sync_conference_to_rag
+├── src/rag_s3_client.py          ← опц. boto3-клиент для S3-синка
+└── tests/                        ← 20+ unit-тестов с моками httpx
 
 mcp-google-calendar/            ← события Google Calendar
-├── src/server.py                 ← FastMCP с tools: create_calendar_event,
-│                                   get_events_for_date, get_upcoming_events,
-│                                   get_current_time_moscow
-└── scripts/setup_oauth.py        ← OAuth2 flow для refresh_token
+├── src/server.py                 ← 🌟 OAuth2-клиент:
+│                                   - tools: create_calendar_event (с attendees,
+│                                     Google Meet и e-mail приглашениями),
+│                                     get_events_for_date, get_upcoming_events,
+│                                     get_current_time_moscow
+│                                   - таймзоны через pytz
+│                                   - валидация ISO 8601
+└── scripts/setup_oauth.py        ← одноразовый flow для получения refresh_token
 ```
 
 ### Что умеет рассказать на защите
 
-- Архитектура MCP-сервера на FastMCP: tool-декораторы, Pydantic-валидация параметров
-- Авторизация Follow-Up: JWT login → `Bearer` → авто-rerefresh на 401
-- Парсинг URL разных ВКС-платформ (Meet, Zoom, Teams, Телемост, Jitsi) для `externalId`
-- Google Calendar: разница между Service Account (для read-only / shared calendar) и OAuth2 (для приглашений и Google Meet ссылок)
-- Обработка ошибок API (404, 400, 401, 403, network timeout) с человекочитаемыми сообщениями для LLM
+- **FastMCP**: tool-декораторы автоматически создают JSON-схему из Pydantic Field-аннотаций, валидируют параметры, отдают streamable-HTTP MCP-протокол.
+- **Авторизация в Follow-Up**: классическая JWT-схема. Логин → access-token (~час) → авто-refresh на 401 → если в env есть `FOLLOWUP_API_KEY`, используем его без email/password (для serverless-сценариев).
+- **Парсинг URL разных платформ**: 7 платформ ВКС, каждая со своим форматом ID. Например, Meet: `https://meet.google.com/abc-defg-hij` → `externalId=abc-defg-hij`. Zoom: `/j/123456789` → `externalId=123456789`.
+- **Google Calendar — Service Account vs OAuth2**: SA удобен для server-to-server, но **не может отправлять email-приглашения** (Google запретил). Для invitations нужен OAuth2 от имени реального пользователя.
+- **`create_calendar_event` с attendees**: при `add_google_meet=True` Google API сам генерирует Meet-ссылку. Если есть `attendees` — рассылает приглашения на email.
+- **Обработка ошибок API**: 401 → пере-логин и retry, 404 → "не найден", 400 → "плохой запрос" → агент видит понятное сообщение и сообщает пользователю.
 
 ### Файлы в зоне
 
-[mcp-followup/src/server.py](mcp-followup/src/server.py), [mcp-followup/src/followup_client.py](mcp-followup/src/followup_client.py), [mcp-followup/src/rag_s3_client.py](mcp-followup/src/rag_s3_client.py), [mcp-google-calendar/src/server.py](mcp-google-calendar/src/server.py), [mcp-google-calendar/scripts/](mcp-google-calendar/scripts/), [mcp-followup/tests/test_unit.py](mcp-followup/tests/test_unit.py).
-
-### Тесты (его)
-- `mcp-followup/tests/test_unit.py` — auth, retry, error mapping, platform detection
-- `mcp-google-calendar/tests/test_unit.py` — валидация дат, парсинг таймзоны
+[mcp-followup/src/followup_client.py](mcp-followup/src/followup_client.py), [mcp-followup/src/server.py](mcp-followup/src/server.py), [mcp-followup/src/rag_s3_client.py](mcp-followup/src/rag_s3_client.py), [mcp-google-calendar/src/server.py](mcp-google-calendar/src/server.py), [mcp-google-calendar/scripts/](mcp-google-calendar/scripts/), [mcp-followup/tests/](mcp-followup/tests/).
 
 ---
 
-## 👤 Человек 3 — Frontend / DevOps
+## 👤 Человек 4 — Backend Engineer #2 (Bot + Infra)
 
-**Что сделал**: спроектировал веб-UI инспектора A2A, поднял всю инфраструктуру (Docker для 6 сервисов, docker-compose с приватной сетью, GitHub Actions CI).
+**Что сделал**: реализовал Telegram-бота на aiogram 3 с автоподключением к агенту, slash-командами и **live-стримингом ответов через SSE**; собрал всё в docker-compose с приватной сетью; настроил GitHub Actions CI.
 
 ### Зона ответственности
 
 ```
-demo-app/                       ← Flask + HTML/CSS/JS UI
-├── app.py                        ← Flask: /api/send, /api/agent-card
-├── templates/index.html          ← одностраничник:
-│                                   - hero-секция с описанием
-│                                   - 4 feature-карточки
-│                                   - чат-панель + промпт-чипы
-│                                   - правая панель: tabs (Agent Card / JSON / История)
-│                                   - градиенты, тёмная тема, Inter + JetBrains Mono
-├── requirements.txt
-└── Dockerfile
+telegram-bot/                   ← aiogram 3 бот
+├── main.py                       ← entrypoint, set_my_commands для авто-подсказок
+├── config/config.py              ← pydantic-settings
+├── src/handlers/common.py        ← 🌟 ключевой файл:
+│                                   - /start с авто-подключением
+│                                   - /upcoming, /summary, /search, /help
+│                                   - свободный текст
+│                                   - live-обновление сообщения через
+│                                     bot.edit_message_text (дроссель 1.2 сек,
+│                                     чтобы не словить TG rate-limit ~30/min)
+│                                   - typing-context manager (анимация "печатает…")
+├── src/services/
+│   ├── agent_connector.py        ← 🌟 A2A SSE-клиент:
+│   │                                - stream_message → парсит SSE из
+│   │                                  message/stream A2A endpoint,
+│   │                                  yield-ит events {status|text|done|error}
+│   │                                - send_message (blocking + retry с exp backoff)
+│   ├── request_manager.py        ← отмена in-flight запросов на edit-message
+│   └── utils/session.py          ← SessionStore (singleton, key by user_id)
+└── tests/                        ← 31 тест:
+                                     - SSE parsing happy/error path
+                                     - retry, payload, truncation
+                                     - SessionStore, RequestManager
 
-docker-compose.yml              ← оркестрация 6 сервисов
-├── volumes: rag-store, hf-cache
-├── networks: meeting-assistant (bridge)
-└── profiles: calendar (опционально)
+docker-compose.yml              ← 🌟 оркестрация 6 сервисов
+├── приватная сеть meeting-assistant (bridge)
+├── volumes: rag-store, hf-cache (модель эмбеддингов переживает rebuilds)
+├── profiles: calendar (Google Calendar опционален)
+└── environment-override: hostnames внутри сети (mcp-followup:8000, …)
 
-Dockerfile×6:
-├── agent/Dockerfile              ← Python 3.12 + uv sync --frozen
-├── telegram-bot/Dockerfile       ← multi-stage
-├── mcp-followup/Dockerfile       ← uv sync + non-root user
-├── mcp-google-calendar/Dockerfile
-├── mcp-rag-local/Dockerfile      ← с HF_HOME для кеша моделей
-└── demo-app/Dockerfile
+Dockerfile×6                    ← все сервисы упакованы:
+├── multi-stage в telegram-bot для уменьшения образа
+├── non-root user в mcp-followup
+└── --frozen в agent (поймали баг с a2a-sdk 1.0.3 vs 0.3.20)
 
-.github/workflows/ci.yml        ← GitHub Actions
-├── compose-validate              ← syntax check
-├── agent (ruff + pytest)
+.github/workflows/ci.yml        ← 4 параллельных job'а:
+├── compose-validate (docker compose config)
+├── agent (ruff + pytest, integration-тесты skipped — экономия токенов)
 ├── telegram-bot (ruff + pytest)
 └── mcp-followup (pytest)
 ```
 
 ### Что умеет рассказать на защите
 
-- Почему **docker-compose vs k8s**: для демо/dev — compose, для прода уже k8s. Здесь 6 сервисов в одной сети, hostname = container name.
-- Как сервисы видят друг друга: `http://mcp-followup:8000/mcp` (внутри docker-сети), а локально снаружи `localhost:8000`.
-- `profiles` в compose — Google Calendar опциональный (не у всех есть creds).
-- Volume `hf-cache` — модель эмбеддингов скачивается **один раз** и переживает `docker compose down`.
-- Multi-stage Dockerfile в telegram-bot — финальный образ меньше (нет uv внутри).
-- Почему `--frozen` в `uv sync`: фиксируем версии из lock-файла (поймали баг с `a2a-sdk 1.0.3` vs `0.3.20`).
-- UI: всё на чистом HTML+CSS+JS без фреймворков — простота для demo, нет билд-шага.
-- CI: запускает 4 job'а параллельно, integration-тесты скипаются (платные LLM-вызовы).
+- **Live-стриминг в Telegram** — это killer-feature. Сообщение "🤔 Думаю…" меняется в реальном времени: `🔧 Использую инструмент: search_knowledge_base` → текст ответа → финал. Технически: aiogram + `bot.edit_message_text` + дросселирование (Telegram rate-limit 30/min на чат).
+- **SSE-парсер для A2A** — `message/stream` отдаёт `data: {jsonrpc, result: {kind: status-update|artifact-update}}` → парсим, различаем статусы (`🔧 …`) от инкрементов текста по префиксу, аккумулируем.
+- **Авто-подключение**: `AUTO_CONNECT_ON_START=true` — убрали 3 лишних клика. Юзер сразу пишет вопрос.
+- **Slash-команды**: `bot.set_my_commands()` — Telegram показывает автодополнение в меню `/`.
+- **Docker Compose**: 6 контейнеров в одной приватной сети. Внутри сети сервисы видят друг друга по имени контейнера, наружу пробрасываются нужные порты.
+- **Volume `hf-cache`**: модель эмбеддингов (470 МБ) скачивается **один раз** и переживает `docker compose down`. Без этого билд RAG-сервиса = 5 минут каждый раз.
+- **CI**: 4 job'а параллельно, integration-тесты выключены через `pytest.mark.skipif(RUN_LLM_INTEGRATION_TESTS != "1")` — экономия токенов на дорогих LLM-вызовах.
 
 ### Файлы в зоне
 
-[demo-app/app.py](demo-app/app.py), [demo-app/templates/index.html](demo-app/templates/index.html), [demo-app/Dockerfile](demo-app/Dockerfile), [docker-compose.yml](docker-compose.yml), [agent/Dockerfile](agent/Dockerfile), [telegram-bot/Dockerfile](telegram-bot/Dockerfile), [mcp-followup/Dockerfile](mcp-followup/Dockerfile), [mcp-google-calendar/Dockerfile](mcp-google-calendar/Dockerfile), [mcp-rag-local/Dockerfile](mcp-rag-local/Dockerfile), [.github/workflows/ci.yml](.github/workflows/ci.yml), [.gitignore](.gitignore).
-
----
-
-## 👤 Человек 4 — Bot / QA Engineer
-
-**Что сделал**: реализовал Telegram-бота с авто-подключением, slash-командами и live-стримингом ответов через SSE; написал и поддерживает тесты бота, написал документацию.
-
-### Зона ответственности
-
-```
-telegram-bot/                   ← aiogram 3 бот
-├── main.py                       ← entrypoint, регистрация команд через set_my_commands
-├── config/config.py              ← pydantic-settings (env)
-├── src/handlers/common.py        ← 🌟 ключевой файл:
-│                                   - /start (auto-connect)
-│                                   - /upcoming, /summary, /search, /help
-│                                   - свободный текст с live-стримингом
-│                                   - дросселирование edit_message (1 раз/1.2 сек)
-│                                   - typing-context manager
-├── src/services/
-│   ├── agent_connector.py        ← 🌟 A2A SSE-клиент:
-│   │                                - send_message (blocking)
-│   │                                - stream_message (SSE parser)
-│   │                                - retry с exponential backoff
-│   ├── request_manager.py        ← отмена in-flight запросов
-│   └── utils/session.py          ← SessionStore (singleton)
-└── tests/
-    ├── test_smoke.py             ← импорты, config, init
-    └── test_bot.py               ← 27 unit-тестов: AgentConnector,
-                                     SSE parsing, RequestManager,
-                                     session store
-
-README.md                       ← главный README c Docker инструкцией
-DEMO.md                         ← пошаговый сценарий демонстрации
-TEAM.md                         ← (этот файл)
-```
-
-### Что умеет рассказать на защите
-
-- **Live-стриминг** в Telegram: A2A `message/stream` → SSE → парсинг events типа `status-update`/`artifact-update` → `bot.edit_message_text` с дросселированием (`STREAM_EDIT_INTERVAL = 1.2s`)
-- Telegram rate limit: ~30 edit/min — поэтому буферим обновления, отправляем не чаще раз в 1.2 сек
-- Различение статус-строки (🔧 префикс) от инкрементов текста ответа
-- Авто-подключение к агенту на `/start` (`AUTO_CONNECT_ON_START=true`) — убрали 3 лишних клика
-- Slash-команды: bot.set_my_commands() — Telegram сам показывает автодополнение
-- Изоляция сессий по `user_id` через singleton SessionStore
-- `pytest-asyncio` + моки `httpx` — как тестировать SSE без реального сервера
-
-### Файлы в зоне
-
-[telegram-bot/main.py](telegram-bot/main.py), [telegram-bot/src/handlers/common.py](telegram-bot/src/handlers/common.py), [telegram-bot/src/services/agent_connector.py](telegram-bot/src/services/agent_connector.py), [telegram-bot/src/services/request_manager.py](telegram-bot/src/services/request_manager.py), [telegram-bot/src/utils/session.py](telegram-bot/src/utils/session.py), [telegram-bot/config/config.py](telegram-bot/config/config.py), [telegram-bot/src/keyboards/__init__.py](telegram-bot/src/keyboards/__init__.py), [telegram-bot/tests/](telegram-bot/tests/), [README.md](README.md), [DEMO.md](DEMO.md).
-
-### Тесты (его)
-- `telegram-bot/tests/` — **31 passed**:
-  - AgentConnector: создание payload, retry, парс ответа, truncation
-  - SSE-парсер: status/text/done/error события + error на 500
-  - SessionStore singleton, RequestManager отмена
-  - smoke: импорты всех модулей
+[telegram-bot/main.py](telegram-bot/main.py), [telegram-bot/src/handlers/common.py](telegram-bot/src/handlers/common.py), [telegram-bot/src/services/agent_connector.py](telegram-bot/src/services/agent_connector.py), [telegram-bot/src/services/request_manager.py](telegram-bot/src/services/request_manager.py), [telegram-bot/src/utils/session.py](telegram-bot/src/utils/session.py), [telegram-bot/tests/](telegram-bot/tests/), [docker-compose.yml](docker-compose.yml), все Dockerfile, [.github/workflows/ci.yml](.github/workflows/ci.yml).
 
 ---
 
 ## 📊 Сводная таблица
 
-| Зона | Файлов | LOC (примерно) | Тесты |
-|---|---:|---:|---:|
-| AI/ML (агент + RAG) | 12 | ~1100 | 33 |
-| Backend (Follow-Up + Calendar) | 8 | ~1400 | 30+ |
-| Frontend / DevOps | 15 | ~900 | (compose-validate) |
-| Bot / QA | 11 | ~700 | 31 |
-| **Итого** | **~46** | **~4100** | **~94 unit + 2 skip** |
+| Зона | Ключевые файлы | Тестов |
+|---|---|---:|
+| ML #1 — Agent | `agent/src/*` (LangChain, A2A) | 25 |
+| ML #2 — RAG | `mcp-rag-local/src/*` + streaming в боте | 8 |
+| Backend #1 — External APIs | `mcp-followup/`, `mcp-google-calendar/` | 20+ |
+| Backend #2 — Bot + Infra | `telegram-bot/`, `docker-compose.yml`, CI | 31 |
+| **Итого** | **~46 файлов** | **~84 unit + 2 skip** |
 
 ## 🎯 Кто что демонстрирует на защите
 
 | Часть демо | Кто говорит |
 |---|---|
-| Hero-секция UI, дизайн, переключение между табами | 👤 3 (Frontend) |
-| Создание встречи в Calendar + e-mail приглашение | 👤 2 (Backend) |
-| Запись Telemost через Follow-Up бота | 👤 2 (Backend) |
-| RAG: добавление фактов + семантический поиск | 👤 1 (AI/ML) |
-| Telegram-бот, slash-команды | 👤 4 (Bot) |
-| Live-стриминг в TG (🔧 Использую инструмент) | 👤 4 (Bot) |
-| JSON-инспектор, Agent Card | 👤 3 (Frontend) |
-| Архитектура: `docker compose ps` + диаграмма | 👤 3 (DevOps) |
-| LangChain под капотом, tool-loop | 👤 1 (AI/ML) |
-| CI/тесты (github actions, 94 теста) | 👤 4 (QA) |
+| Архитектура: `docker compose ps` + диаграмма | 👤 4 (Infra) |
+| Hero-секция UI, инспектор A2A, Agent Card | 👤 1 (Agent) |
+| LangChain tool-loop, prompt engineering | 👤 1 (Agent) |
+| Создание встречи в Calendar + e-mail приглашение | 👤 3 (External APIs) |
+| Запись Telemost через Follow-Up | 👤 3 (External APIs) |
+| RAG: добавление фактов + семантический поиск | 👤 2 (RAG) |
+| Выбор embedding модели, cosine similarity | 👤 2 (RAG) |
+| Telegram-бот, slash-команды, авто-подключение | 👤 4 (Bot) |
+| Live-стриминг ответа в TG (🔧 Использую инструмент) | 👤 4 (Bot) + 👤 1 (Agent stream) |
+| MCP-протокол — зачем выносим tools в отдельные сервисы | 👤 1 (Agent) |
+| CI/тесты | 👤 4 (Infra) |
 
 ## ⚖️ Балансировка
 
-- Все 4 написали примерно одинаково кода (~700-1400 LOC каждый).
-- Все 4 написали свои тесты (~25-30 шт каждый, кроме DevOps — у того compose-validate в CI).
-- Все 4 могут говорить на защите минимум 2-3 минуты по своей зоне.
-- Никто не дублирует чужой стек: ML отдельно, REST API отдельно, инфра отдельно, UX/streaming отдельно.
-
-Если кто-то слабее — можно подвинуть scope: например, перевести один из MCP-серверов из Backend Engineer'у в AI/ML, либо часть Docker-инфры в DevOps уменьшить и добавить ему пару тестов.
+- **2 ML-щика**: один отвечает за «голову» агента (LangChain, prompt engineering, LLM-провайдер), второй — за «память» (RAG + tool-event streaming).
+- **2 backend-инженера**: один на внешние REST-интеграции (Follow-Up, Google), второй на пользовательский слой (TG-бот, Docker, CI).
+- **Frontend (`demo-app/templates/index.html`) и тесты сгенерированы AI** — каждый поддерживает тесты в своей зоне (правит при изменениях), демо-UI поддерживает Infra-инженер (он же отвечает за деплой).
+- Никто не дублирует чужой стек: ML работает с LLM и эмбеддингами, Backend — с REST API и сетью/деплоем.

@@ -7,6 +7,8 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
     <style>
         :root {
             --bg-0: #0a0e1a;
@@ -343,12 +345,97 @@
             background: var(--bg-2);
             border-left: 3px solid var(--accent);
             border-radius: 0 12px 12px 0;
-            padding: 18px 20px;
+            padding: 18px 22px;
             color: var(--text-0);
             line-height: 1.65;
-            white-space: pre-wrap;
             word-wrap: break-word;
             font-size: 14.5px;
+        }
+
+        /* ---- Markdown rendering ---- */
+        .response-text > *:first-child { margin-top: 0; }
+        .response-text > *:last-child  { margin-bottom: 0; }
+        .response-text h1, .response-text h2, .response-text h3,
+        .response-text h4, .response-text h5, .response-text h6 {
+            margin: 18px 0 8px;
+            font-weight: 700;
+            line-height: 1.3;
+            color: var(--text-0);
+        }
+        .response-text h1 { font-size: 22px; }
+        .response-text h2 { font-size: 19px; }
+        .response-text h3 { font-size: 17px; }
+        .response-text h4 { font-size: 15px; }
+        .response-text h5, .response-text h6 { font-size: 14px; color: var(--text-1); }
+        .response-text p { margin: 10px 0; }
+        .response-text ul, .response-text ol {
+            margin: 8px 0;
+            padding-left: 26px;
+        }
+        .response-text li { margin: 4px 0; }
+        .response-text li > p { margin: 4px 0; }
+        .response-text strong { color: var(--text-0); font-weight: 700; }
+        .response-text em { color: var(--text-1); font-style: italic; }
+        .response-text a {
+            color: #93c5fd;
+            text-decoration: underline;
+            text-underline-offset: 2px;
+        }
+        .response-text a:hover { color: #bfdbfe; }
+        .response-text code {
+            background: rgba(99, 102, 241, 0.15);
+            color: #e0e7ff;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.87em;
+        }
+        .response-text pre {
+            background: #0d1224;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 12px 14px;
+            overflow-x: auto;
+            margin: 12px 0;
+        }
+        .response-text pre code {
+            background: transparent;
+            color: var(--text-1);
+            padding: 0;
+            font-size: 12.5px;
+            line-height: 1.55;
+        }
+        .response-text blockquote {
+            border-left: 3px solid var(--text-3);
+            padding: 4px 14px;
+            margin: 10px 0;
+            color: var(--text-1);
+            background: rgba(255, 255, 255, 0.02);
+            border-radius: 0 6px 6px 0;
+        }
+        .response-text hr {
+            border: 0;
+            border-top: 1px solid var(--border);
+            margin: 16px 0;
+        }
+        .response-text table {
+            border-collapse: collapse;
+            margin: 12px 0;
+            width: 100%;
+            font-size: 13px;
+        }
+        .response-text th, .response-text td {
+            border: 1px solid var(--border);
+            padding: 8px 12px;
+            text-align: left;
+        }
+        .response-text th {
+            background: var(--bg-3);
+            font-weight: 600;
+        }
+        .response-text img {
+            max-width: 100%;
+            border-radius: 6px;
         }
         .empty-state {
             text-align: center;
@@ -787,7 +874,7 @@
 
             const agentText = extractAgentResponse(result.data);
             document.getElementById('responseContent').innerHTML = `
-                <div class="response-text">${escapeHtml(agentText)}</div>`;
+                <div class="response-text">${renderMarkdown(agentText)}</div>`;
             document.getElementById('responseBadge').innerHTML = '<span class="badge success">✓ ok</span>';
             document.getElementById('jsonContent').innerHTML = formatJson(result.data);
 
@@ -812,6 +899,13 @@
 
     function escapeHtml(s) {
         return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    // Markdown → безопасный HTML (DOMPurify против XSS из ответов LLM)
+    marked.setOptions({ gfm: true, breaks: true });
+    function renderMarkdown(text) {
+        const raw = marked.parse(text || '');
+        return DOMPurify.sanitize(raw);
     }
 
     async function loadAgentCard() {
@@ -891,7 +985,7 @@
     function showHistory(i) {
         const item = history[i];
         document.getElementById('responseContent').innerHTML = `
-            <div class="response-text">${escapeHtml(item.response)}</div>`;
+            <div class="response-text">${renderMarkdown(item.response)}</div>`;
         document.getElementById('jsonContent').innerHTML = formatJson(item.data);
         document.getElementById('responseBadge').innerHTML = '<span class="badge success">↺ replay</span>';
     }

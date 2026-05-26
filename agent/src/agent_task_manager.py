@@ -37,9 +37,9 @@ class MeetingAssistantAgentExecutor(AgentExecutor):
         if not task:
             task = new_task(context.message)
             await event_queue.enqueue_event(task)
-        
+
         updater = TaskUpdater(event_queue, task.id, task.context_id)
-        
+
         # Вызываем агента с streaming
         async for item in self.agent.stream(query, task.context_id):
             is_task_complete = item['is_task_complete']
@@ -55,7 +55,7 @@ class MeetingAssistantAgentExecutor(AgentExecutor):
                     ),
                 )
                 break
-            
+
             if is_event:
                 await updater.update_status(
                     TaskState.working,
@@ -64,7 +64,7 @@ class MeetingAssistantAgentExecutor(AgentExecutor):
                     ),
                 )
                 continue
-            
+
             if not is_task_complete and not require_user_input:
                 await updater.update_status(
                     TaskState.working,
@@ -82,7 +82,7 @@ class MeetingAssistantAgentExecutor(AgentExecutor):
                     ),
                 )
                 break
-            
+
             if is_task_complete and not require_user_input:
                 await updater.update_status(
                     TaskState.completed,

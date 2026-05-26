@@ -1,8 +1,9 @@
 """Точка входа Meeting Assistant агента через A2A протокол."""
-import os
 import logging
+import os
 
 from dotenv import load_dotenv
+
 load_dotenv(override=False)
 
 from a2a.server.apps import A2AStarletteApplication
@@ -11,12 +12,12 @@ from a2a.server.tasks import InMemoryTaskStore
 from a2a.types import AgentCapabilities, AgentCard, AgentSkill
 
 try:
-    from .agent import create_meeting_assistant_agent
     from .a2a_wrapper import MeetingAssistantA2AWrapper
+    from .agent import create_meeting_assistant_agent
     from .agent_task_manager import MeetingAssistantAgentExecutor
 except ImportError:
-    from agent import create_meeting_assistant_agent
     from a2a_wrapper import MeetingAssistantA2AWrapper
+    from agent import create_meeting_assistant_agent
     from agent_task_manager import MeetingAssistantAgentExecutor
 
 logging.basicConfig(
@@ -30,21 +31,21 @@ def main():
     followup_mcp_url = os.getenv("FOLLOWUP_MCP_URL")
     gcalendar_mcp_url = os.getenv("GCALENDAR_MCP_URL")
     rag_mcp_url = os.getenv("MANAGED_RAG_MCP_URL")
-    
+
     logger.info("🤖 MEETING ASSISTANT AGENT")
     logger.info(f"Follow-Up: {followup_mcp_url or 'не настроен'}")
     logger.info(f"Calendar: {gcalendar_mcp_url or 'не настроен'}")
     logger.info(f"RAG: {rag_mcp_url or 'не настроен'}")
-    
+
     agent_executor = create_meeting_assistant_agent(
         followup_mcp_url=followup_mcp_url,
         gcalendar_mcp_url=gcalendar_mcp_url,
         rag_mcp_url=rag_mcp_url,
     )
-    
+
     agent_wrapper = MeetingAssistantA2AWrapper(agent_executor)
     agent_executor_a2a = MeetingAssistantAgentExecutor(agent_wrapper)
-    
+
     agent_card = AgentCard(
         name=os.getenv('AGENT_NAME', 'Meeting Assistant'),
         description=os.getenv('AGENT_DESCRIPTION', 'AI-ассистент для созвонов'),
@@ -84,17 +85,17 @@ def main():
             ),
         ],
     )
-    
+
     request_handler = DefaultRequestHandler(
         agent_executor=agent_executor_a2a,
         task_store=InMemoryTaskStore(),
     )
-    
+
     server = A2AStarletteApplication(
         agent_card=agent_card,
         http_handler=request_handler
     )
-    
+
     import uvicorn
     port = int(os.getenv("PORT", 10000))
     logger.info(f"🚀 Starting on port {port}")

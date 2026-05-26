@@ -44,9 +44,14 @@ markers = [
 ]
 
 [tool.ruff]
-line-length = 100
+line-length = 120
 target-version = "py311"
+
+[tool.ruff.lint]
 select = ["E", "F", "I", "W"]
+# E501 — длинные строки внутри system prompt (русский текст, не разбить).
+# E402 — `load_dotenv()` обязан выполниться до `from a2a…`, который читает env при импорте.
+ignore = ["E501", "E402"]
 
 
 

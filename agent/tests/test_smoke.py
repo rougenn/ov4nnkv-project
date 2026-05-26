@@ -1,7 +1,5 @@
 """Smoke-тесты: проверка что все модули импортируются и инициализируются."""
 
-import importlib
-import os
 
 import pytest
 
